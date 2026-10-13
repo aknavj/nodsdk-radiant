@@ -14,3 +14,20 @@ These source keys are an authoring convention. Conversion to NOD's left-handed
 coordinates and NSD property tags must be implemented and tested by the compiler.
 Placing this entity does not yet produce a playable spawn.
 */
+
+/*QUAKED misc_model (0.6 0.8 0.4) (-8 -8 -8) (8 8 8)
+Editor-only static decoration prop. This is not an NSD entity type.
+
+"model" - VFS-relative NOD or NMB path, e.g. 3D/Models/example.nod.
+"_frame" - Zero-based NMB model-entry index. NOD uses 0.
+"origin" - Source position in editor Z-up coordinates.
+"angles" - Source pitch, yaw and roll in degrees.
+"modelscale" - Uniform scale (default 1).
+"modelscale_vec" - Per-axis scale, overriding modelscale.
+"_remap0" - Optional native material remap: textures/nod/old;textures/nod/new.
+
+Models use source coordinates, native UVs and LOD 0. Skinned meshes are shown
+in rest pose; animation playback is not implemented. The original asset tree
+is read-only. Map saving preserves references, not copies of model geometry.
+Binary NOD/NSD export and coordinate conversion are not implemented.
+*/

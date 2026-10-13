@@ -21,6 +21,37 @@
 
 #include "cpicomodel.h"
 #include "cpicosurface.h"
+#include "nodmodel.h"
+
+static picoModel_t *LoadPicoModel( char *name, int frame ){
+	if ( NodModelIsSupported( name ) ) {
+		void *buffer = NULL;
+		const int size = vfsLoadFile( name, &buffer, 0 );
+		std::string error;
+		picoModel_t *model = NULL;
+		if ( size > 0 && buffer )
+			model = NodModelLoadBuffer( name, frame, static_cast<const unsigned char*>( buffer ),
+				static_cast<std::size_t>( size ), error );
+		else
+			error = "Cannot read native model through the VFS";
+		if ( buffer ) vfsFreeFile( buffer );
+		if ( !model ) Sys_FPrintf( SYS_ERR, "ERROR: %s (_frame %d): %s\n", name, frame, error.c_str() );
+		return model;
+	}
+	picoModel_t *model = PicoLoadModel( name, frame );
+	const std::size_t len = strlen( name );
+	if ( !model && len >= 4 ) {
+		if ( !strcmp( name + len - 4, ".md3" ) ) {
+			name[len - 1] = 'c';
+			model = PicoLoadModel( name, frame );
+		}
+		else if ( !strcmp( name + len - 4, ".mdc" ) ) {
+			name[len - 1] = '3';
+			model = PicoLoadModel( name, frame );
+		}
+	}
+	return model;
+}
 
 CPicoModel::CPicoModel( const PicoModelKey& key )
 	: m_refcount( 1 ){
@@ -51,23 +82,10 @@ void CPicoModel::load( const char *name, const int frame ){
 	strcpy( m_name,name );
 
 	m_frame = frame;
-
-	if ( !( m_pModel = PicoLoadModel( m_name, frame ) ) ) {
-		int len = strlen( m_name );
-
-		// Try loading an mdc if md3 fails and vice-versa (fixme: only do this for games with mdc support)
-		if ( !strcmp( m_name + len - 4, ".md3" ) ) {
-			m_name[len - 1] = 'c';
-			m_pModel = PicoLoadModel( m_name, frame );
-		}
-		else if ( !strcmp( m_name + len - 4, ".mdc" ) ) {
-			m_name[len - 1] = '3';
-			m_pModel = PicoLoadModel( m_name, frame );
-		}
-	}
+	m_children = g_ptr_array_new();
+	m_pModel = LoadPicoModel( m_name, frame );
 
 	if ( m_pModel ) {
-		m_children = g_ptr_array_new();
 		aabb_clear( &m_BBox );
 		for ( i = 0; i < PicoGetModelNumSurfaces( m_pModel ); i++ )
 		{
@@ -87,12 +105,11 @@ void CPicoModel::load( const char *name, const int frame ){
 }
 
 CPicoModel::~CPicoModel(){
-	if ( m_pModel ) {
-		for ( unsigned int i = 0; i < m_children->len; i++ )
-			( (CPicoSurface*)m_children->pdata[i] )->DecRef();
-		g_ptr_array_free( m_children, FALSE );
-	}
-	g_ptr_array_free( m_parents, FALSE );
+	for ( unsigned int i = 0; i < m_children->len; i++ )
+		( (CPicoSurface*)m_children->pdata[i] )->DecRef();
+	g_ptr_array_free( m_children, TRUE );
+	PicoFreeModel( m_pModel );
+	g_ptr_array_free( m_parents, TRUE );
 	delete [] m_name;
 }
 
@@ -116,18 +133,15 @@ void CPicoModel::Reload( void ){
 	unsigned int j;
 
 	// Get rid of the old model
-	if ( m_pModel ) {
-		for ( j = 0; j < m_children->len; j++ ) {
-			( (CPicoSurface*)m_children->pdata[j] )->DecRef();
-			g_ptr_array_remove_index_fast( m_children, j );
-		}
-	}
+	for ( j = 0; j < m_children->len; j++ )
+		( (CPicoSurface*)m_children->pdata[j] )->DecRef();
+	g_ptr_array_set_size( m_children, 0 );
+	PicoFreeModel( m_pModel );
 
 	// And reload it
-	m_pModel = PicoLoadModel( m_name, m_frame );
+	m_pModel = LoadPicoModel( m_name, m_frame );
 
 	if ( m_pModel ) {
-		m_children = g_ptr_array_new();
 		aabb_clear( &m_BBox );
 		for ( i = 0; i < PicoGetModelNumSurfaces( m_pModel ); i++ )
 		{

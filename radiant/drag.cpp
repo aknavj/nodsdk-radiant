@@ -594,9 +594,9 @@ void MoveSelection( vec3_t move ){
 			v[2] = 0.9f;
 		}
 
-		Select_Scale( ( g_nScaleHow & SCALE_X ) ? 1.0f : v[0],
-					  ( g_nScaleHow & SCALE_Y ) ? 1.0f : v[1],
-					  ( g_nScaleHow & SCALE_Z ) ? 1.0f : v[2] );
+		Select_Scale( ( g_nScaleHow & SCALE_X ) ? v[0] : 1.0f,
+					  ( g_nScaleHow & SCALE_Y ) ? v[1] : 1.0f,
+					  ( g_nScaleHow & SCALE_Z ) ? v[2] : 1.0f );
 		// is that really necessary???
 		Sys_UpdateWindows( W_ALL );
 		return;

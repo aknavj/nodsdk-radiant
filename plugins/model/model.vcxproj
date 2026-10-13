@@ -158,7 +158,20 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\libs\nodsdk-scghost\src\parsers;$(ProjectDir)..\..\libs\glm;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <Target Name="CheckNativeModelDependencies" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(ProjectDir)..\..\libs\nodsdk-scghost\src\parsers\NODParser.h') Or !Exists('$(ProjectDir)..\..\libs\glm\glm\glm.hpp')" Text="Native model dependencies are missing. Run python dependencies.py from the GtkRadiant source directory." />
+  </Target>
   <ItemGroup>
+    <ClCompile Include="nodmodel.cpp" />
+    <ClCompile Include="..\..\libs\nodsdk-scghost\src\parsers\AssetParser.cpp" />
+    <ClCompile Include="..\..\libs\nodsdk-scghost\src\parsers\NODParser.cpp" />
+    <ClCompile Include="..\..\libs\nodsdk-scghost\src\parsers\NMBParser.cpp" />
     <ClCompile Include="cpicomodel.cpp" />
     <ClCompile Include="cpicosurface.cpp" />
     <ClCompile Include="model.cpp" />

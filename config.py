@@ -14,6 +14,7 @@ if __name__ != '__main__':
     from SCons.Script import *
 
 import utils
+import dependencies
 
 GTK_PREFIX='gtk-2.24.10'
 GTK64_PREFIX='gtk-2.22.1_win64'
@@ -337,13 +338,15 @@ class Config:
                 shutil.copy( os.path.join( root, file ), os.path.join( target_dir, file ) )
 
     def Setup( self ):
+        env = Environment()
+        if not env.GetOption('clean'):
+            dependencies.fetch()
         try:
             self.setup_platforms.index( 'local' )
         except:
             pass
         else:
             # special case, fetch external paks under the local install directory
-            env = Environment()
             if not env.GetOption('clean') and not env.GetOption('no_packs'):
                 self.FetchGamePaks( self.install_directory )
         # NOTE: unrelated to self.setup_platforms - grab support files and binaries and install them

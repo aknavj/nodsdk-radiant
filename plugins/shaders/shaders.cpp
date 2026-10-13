@@ -83,6 +83,7 @@ static void IndexNodTextureDirectory( const std::string &directory ){
 static std::string NodTextureForName( const std::string &reference ){
 	if ( !g_NodTexturesIndexed ) {
 		IndexNodTextureDirectory( "Materials" );
+		IndexNodTextureDirectory( "3D/Materials" );
 		g_NodTexturesIndexed = true;
 	}
 	const std::string path = g_NodTextures.Resolve( reference );

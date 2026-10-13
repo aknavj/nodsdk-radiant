@@ -24,7 +24,45 @@ GtkRadiant provides level editing support for [Quake](https://en.wikipedia.org/w
 How to build
 ------------
 
+Experimental StarCraft Ghost (NOD Engine) authoring support is available as a
+bundled gamepack. See [the profile guide](gamepacks/SCGhostPack/README.md) for
+setup and limitations. This is source-map editing support, not binary level
+export or a verified recreation of the original licensed tool. Native DDS and
+`.nsa` material previews can read an external asset directory without importing
+or modifying the original assets.
+
 You can find more complete instructions to build on Windows [here](https://icculus.org/gtkradiant/documentation/windows_compile_guide/) and to build on Mac OS [here](apple/README.md).
+
+### Windows editor build (Visual Studio 2022)
+
+Use Visual Studio 2022 with the **Desktop development with C++** workload and
+a Windows SDK. The supported configuration for the bundled Windows runtime
+dependencies is **Win32**, not x64. Python 3 and SCons are required for dependency
+setup.
+
+Setup fetches the SDK and GLM revisions pinned in `dependencies.json`.
+For an existing Windows dependency installation, restore only these small
+source dependencies with `python dependencies.py` before building the model
+module. Dirty dependency checkouts are rejected rather than overwritten.
+
+From a **Developer PowerShell for VS 2022**, in the source directory:
+
+```powershell
+# Restore runtime/build dependencies and stage only the bundled NOD profile.
+scons target=setup setup_packs=SCGhostPack setup_platforms=local
+
+# Build the editor, its dependent libraries, and the profile's required modules.
+msbuild .\radiant.sln "/t:radiant;entity;image;imagepng;map;mapxml;model;shaders;surface;vfspk3" /p:Configuration=Release /p:Platform=Win32 /m
+
+# Launch with the runtime directory as the working directory.
+Push-Location .\install
+try { .\radiant.exe } finally { Pop-Location }
+```
+
+This editor-only build does not require BSPC, Quake map compilers, or the legacy
+`v141_xp` toolset. Building the entire solution also builds BSPC, whose separately
+fetched project still requires that legacy toolset. Other game profiles may
+require additional editor modules.
 
 The Linux version is developed and distributed via Flatpak. See [GtkRadiant on Flathub](https://flathub.org/apps/io.github.TTimo.GtkRadiant).
 

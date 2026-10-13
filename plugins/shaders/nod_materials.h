@@ -46,10 +46,14 @@ public:
 
 	std::string Resolve( const std::string &reference ) const {
 		std::string key = Key( reference );
+		std::map<std::string, std::string>::const_iterator path = paths.find( key );
+		if ( path != paths.end() ) {
+			return path->second;
+		}
 		if ( key.compare( 0, 10, "materials/" ) != 0 ) {
 			key = "materials/" + key;
 		}
-		std::map<std::string, std::string>::const_iterator path = paths.find( key );
+		path = paths.find( key );
 		if ( path != paths.end() ) {
 			return path->second;
 		}

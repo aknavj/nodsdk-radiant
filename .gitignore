@@ -16,6 +16,8 @@
 /radiant.v12.suo
 /radiant.VC.db
 /site.sconf
+/libs/nodsdk-scghost/
+/libs/glm/
 
 *.log
 *.pdb
@@ -25,7 +27,6 @@
 *.tlog
 *.vcxproj.user
 *.zip
-
 
 
 

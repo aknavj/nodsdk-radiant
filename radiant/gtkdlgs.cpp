@@ -1513,29 +1513,27 @@ void DoEntityList(){
 // Rotate dialog
 
 static void rotatedlg_apply( GtkWidget *widget, gpointer data ){
-	GtkSpinButton *spin;
-	float f;
-
-	spin = GTK_SPIN_BUTTON( g_object_get_data( G_OBJECT( data ), "x" ) );
-	f = gtk_spin_button_get_value( spin );
-	if ( f != 0.0 ) {
-		Select_RotateAxis( 0, f );
+	const char *keys[3] = { "x", "y", "z" };
+	float rotation[3];
+	for ( int axis = 0; axis < 3; ++axis ) {
+		GtkSpinButton *spin = GTK_SPIN_BUTTON( g_object_get_data( G_OBJECT( data ), keys[axis] ) );
+		gtk_spin_button_update( spin );
+		rotation[axis] = gtk_spin_button_get_value( spin );
+		gtk_spin_button_set_value( spin, 0.0f );
 	}
-	gtk_spin_button_set_value( GTK_SPIN_BUTTON( spin ), 0.0f ); // reset to 0 on Apply
-
-	spin = GTK_SPIN_BUTTON( g_object_get_data( G_OBJECT( data ), "y" ) );
-	f = gtk_spin_button_get_value( spin );
-	if ( f != 0.0 ) {
-		Select_RotateAxis( 1, f );
+	if ( rotation[0] == 0 && rotation[1] == 0 && rotation[2] == 0 ) {
+		return;
 	}
-	gtk_spin_button_set_value( GTK_SPIN_BUTTON( spin ), 0.0f );
 
-	spin = GTK_SPIN_BUTTON( g_object_get_data( G_OBJECT( data ), "z" ) );
-	f = gtk_spin_button_get_value( spin );
-	if ( f != 0.0 ) {
-		Select_RotateAxis( 2, f );
+	Undo_Start( "arbitrary rotation" );
+	Undo_AddBrushList( &selected_brushes );
+	for ( int axis = 0; axis < 3; ++axis ) {
+		if ( rotation[axis] != 0 ) {
+			Select_RotateAxis( axis, rotation[axis] );
+		}
 	}
-	gtk_spin_button_set_value( GTK_SPIN_BUTTON( spin ), 0.0f );
+	Undo_EndBrushList( &selected_brushes );
+	Undo_End();
 }
 
 static void rotatedialog_response( GtkWidget *widget, gint response_id, gpointer data ){
@@ -1568,6 +1566,10 @@ void DoRotateDlg(){
 	gtk_dialog_add_button( GTK_DIALOG( dialog ), _( "Apply" ), GTK_RESPONSE_APPLY );
 
 	content_area = gtk_dialog_get_content_area( GTK_DIALOG( dialog ) );
+
+	label = gtk_label_new( _( "Rotation increments in degrees around world X/Y/Z.\nModel props rotate in place at their own origins." ) );
+	gtk_box_pack_start( GTK_BOX( content_area ), label, FALSE, FALSE, 5 );
+	gtk_widget_show( label );
 
 	hbox = gtk_hbox_new( FALSE, 5 );
 	gtk_container_add( GTK_CONTAINER( content_area ), hbox );
@@ -2108,6 +2110,10 @@ static void scaledlg_apply( GtkWidget *widget, gpointer data ){
 	y = GTK_WIDGET( g_object_get_data( G_OBJECT( data ), "y" ) );
 	z = GTK_WIDGET( g_object_get_data( G_OBJECT( data ), "z" ) );
 
+	gtk_spin_button_update( GTK_SPIN_BUTTON( x ) );
+	gtk_spin_button_update( GTK_SPIN_BUTTON( y ) );
+	gtk_spin_button_update( GTK_SPIN_BUTTON( z ) );
+
 	sx = gtk_spin_button_get_value( GTK_SPIN_BUTTON( x ) );
 	sy = gtk_spin_button_get_value( GTK_SPIN_BUTTON( y ) );
 	sz = gtk_spin_button_get_value( GTK_SPIN_BUTTON( z ) );
@@ -2116,8 +2122,15 @@ static void scaledlg_apply( GtkWidget *widget, gpointer data ){
 	gtk_spin_button_set_value( GTK_SPIN_BUTTON( y ), 1.0f );
 	gtk_spin_button_set_value( GTK_SPIN_BUTTON( z ), 1.0f );
 
+	if ( sx == 1 && sy == 1 && sz == 1 ) {
+		return;
+	}
 	if ( sx > 0 && sy > 0 && sz > 0 ) {
+		Undo_Start( "scale" );
+		Undo_AddBrushList( &selected_brushes );
 		Select_Scale( sx, sy, sz );
+		Undo_EndBrushList( &selected_brushes );
+		Undo_End();
 		Sys_UpdateWindows( W_ALL );
 	}
 	else{
@@ -2155,6 +2168,10 @@ void DoScaleDlg(){
 	gtk_dialog_add_button( GTK_DIALOG( dialog ), _( "Apply" ), GTK_RESPONSE_APPLY );
 
 	content_area = gtk_dialog_get_content_area( GTK_DIALOG( dialog ) );
+
+	label = gtk_label_new( _( "Scale factors: 1 keeps the current size.\nModel props resize in place on their local axes." ) );
+	gtk_box_pack_start( GTK_BOX( content_area ), label, FALSE, FALSE, 5 );
+	gtk_widget_show( label );
 
 	hbox = gtk_hbox_new( FALSE, 5 );
 	gtk_container_add( GTK_CONTAINER( content_area ), hbox );

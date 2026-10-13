@@ -21,6 +21,7 @@
  */
 
 #include "plugin.h"
+#include "nodmodel.h"
 
 // toolbar implementation
 
@@ -105,6 +106,8 @@ static void initialise(){
 }
 
 static void add_model_apis( CSynapseClient& client ){
+	client.AddAPI( MODEL_MAJOR, "nod", sizeof( _QERPlugModelTable ) );
+	client.AddAPI( MODEL_MAJOR, "nmb", sizeof( _QERPlugModelTable ) );
 	const picoModule_t** modules = PicoModuleList( NULL );
 	while ( *modules != NULL )
 	{
@@ -117,6 +120,7 @@ static void add_model_apis( CSynapseClient& client ){
 }
 
 static bool model_is_supported( const char* extension ){
+	if ( NodModelExtensionSupported( extension ) ) return true;
 	const picoModule_t** modules = PicoModuleList( NULL );
 	while ( *modules != NULL )
 	{
@@ -132,6 +136,8 @@ static bool model_is_supported( const char* extension ){
 }
 
 void init_filetypes(){
+	GetFileTypeRegistry()->addType( MODEL_MAJOR, filetype_t( "NOD rest-pose model", "*.nod" ) );
+	GetFileTypeRegistry()->addType( MODEL_MAJOR, filetype_t( "NMB model bundle", "*.nmb" ) );
 	const picoModule_t **modules = PicoModuleList( NULL );
 	while ( *modules != NULL )
 	{

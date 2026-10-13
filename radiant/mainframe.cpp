@@ -4365,7 +4365,11 @@ void MainFrame::NudgeSelection( int nDirection, float fAmount ){
 		strStatus.Format( "Rotation x:: %.1f  y:: %.1f  z:: %.1f", g_pParentWnd->ActiveXY()->Rotation()[0],
 						  g_pParentWnd->ActiveXY()->Rotation()[1], g_pParentWnd->ActiveXY()->Rotation()[2] );
 		g_pParentWnd->SetStatusText( 2, strStatus );
+		Undo_Start( "rotate" );
+		Undo_AddBrushList( &selected_brushes );
 		Select_RotateAxis( nAxis, fDeg, false, true );
+		Undo_EndBrushList( &selected_brushes );
+		Undo_End();
 		Sys_UpdateWindows( W_ALL );
 	}
 	else
@@ -4387,9 +4391,13 @@ void MainFrame::NudgeSelection( int nDirection, float fAmount ){
 			v[2] = 0.9f;
 		}
 
+		Undo_Start( "scale" );
+		Undo_AddBrushList( &selected_brushes );
 		Select_Scale( ( g_nScaleHow & SCALE_X ) ? v[0] : 1.0,
 					  ( g_nScaleHow & SCALE_Y ) ? v[1] : 1.0,
 					  ( g_nScaleHow & SCALE_Z ) ? v[2] : 1.0 );
+		Undo_EndBrushList( &selected_brushes );
+		Undo_End();
 		Sys_UpdateWindows( W_ALL );
 	}
 	else
@@ -5567,21 +5575,11 @@ void MainFrame::OnBrushRotatez(){
 }
 
 void MainFrame::OnSelectionArbitraryrotation(){
-	Undo_Start( "arbitrary rotation" );
-	Undo_AddBrushList( &selected_brushes );
-
 	DoRotateDlg();
-
-	Undo_EndBrushList( &selected_brushes );
-	Undo_End();
 }
 
 void MainFrame::OnSelectScale(){
-	Undo_Start( "scale" );
-	Undo_AddBrushList( &selected_brushes );
 	DoScaleDlg();
-	Undo_EndBrushList( &selected_brushes );
-	Undo_End();
 }
 
 void MainFrame::OnSelectionMakehollow(){

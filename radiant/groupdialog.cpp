@@ -33,6 +33,7 @@
 #include <glib/gi18n.h>
 #include "stdafx.h"
 #include "groupdialog.h"
+#include "modeltransform.h"
 
 GtkWidget*  EntWidgets[EntLast];
 int inspector_mode;                     // W_TEXTURE, W_ENTITY, or W_CONSOLE
@@ -439,18 +440,85 @@ void AddProp(){
 		return;
 	}
 
+	bool modelScaleEdit = false;
+	bool modelRotationEdit = false;
+	bool vectorOverride = false;
+	const bool uniformScaleKey = strcmp( key, "modelscale" ) == 0;
+	const bool scaleKey = uniformScaleKey || strcmp( key, "modelscale_vec" ) == 0;
+	const bool yawKey = strcmp( key, "angle" ) == 0;
+	const bool rotationKey = yawKey || strcmp( key, "angles" ) == 0;
+	if ( scaleKey || rotationKey ) {
+		if ( multiple_entities ) {
+			for ( brush_t *b = selected_brushes.next; b != &selected_brushes; b = b->next ) {
+				if ( ModelTransform_IsEntity( ValueForKey( b->owner, "classname" ) ) ) {
+					modelScaleEdit = scaleKey;
+					modelRotationEdit = rotationKey;
+					vectorOverride = vectorOverride || ValueForKey( b->owner, "modelscale_vec" )[0] != '\0';
+				}
+			}
+		}
+		else if ( ModelTransform_IsEntity( ValueForKey( edit_entity, "classname" ) ) ) {
+			modelScaleEdit = scaleKey;
+			modelRotationEdit = rotationKey;
+			vectorOverride = ValueForKey( edit_entity, "modelscale_vec" )[0] != '\0';
+		}
+	}
+	if ( modelScaleEdit ) {
+		float scale[3];
+		if ( value[0] != '\0' && !ModelTransform_Parse( value, uniformScaleKey ? 1 : 3, scale ) ) {
+			gtk_MessageBox( g_pParentWnd->m_pWidget,
+							_( "Use one finite, nonzero number for modelscale, or three space-separated finite, nonzero numbers for modelscale_vec." ),
+							_( "Invalid model scale" ), MB_OK );
+			return;
+		}
+	}
+	if ( modelRotationEdit ) {
+		float angles[3];
+		if ( value[0] != '\0' && !ModelTransform_Parse( value, yawKey ? 1 : 3, angles, true ) ) {
+			gtk_MessageBox( g_pParentWnd->m_pWidget,
+							_( "Use one finite yaw angle for angle, or three space-separated finite pitch/yaw/roll angles for angles. Values are in degrees." ),
+							_( "Invalid model rotation" ), MB_OK );
+			return;
+		}
+	}
+	if ( modelScaleEdit || modelRotationEdit ) {
+		Undo_Start( modelScaleEdit ? "model scale" : "model rotation" );
+		Undo_AddBrushList( &selected_brushes );
+		Undo_AddEntity( edit_entity );
+	}
+
 	if ( multiple_entities ) {
 		brush_t *b;
 
-		for ( b = selected_brushes.next ; b != &selected_brushes ; b = b->next )
+		for ( b = selected_brushes.next ; b != &selected_brushes ; b = b->next ) {
+			if ( modelRotationEdit && ModelTransform_IsEntity( ValueForKey( b->owner, "classname" ) ) ) {
+				DeleteKey( b->owner, yawKey ? "angles" : "angle" );
+			}
 			SetKeyValue( b->owner, key, value );
+		}
 	}
 	else{
+		if ( modelRotationEdit ) {
+			DeleteKey( edit_entity, yawKey ? "angles" : "angle" );
+		}
 		SetKeyValue( edit_entity, key, value );
+	}
+
+	if ( modelScaleEdit || modelRotationEdit ) {
+		Undo_EndBrushList( &selected_brushes );
+		Undo_EndEntity( edit_entity );
+		Undo_End();
+		Sys_MarkMapModified();
 	}
 
 	// refresh the prop listbox
 	SetKeyValuePairs();
+
+	if ( modelScaleEdit && uniformScaleKey && vectorOverride ) {
+		gtk_MessageBox( g_pParentWnd->m_pWidget,
+						_( "modelscale_vec overrides modelscale on this selection. The uniform value was stored, but to resize those models, edit or delete modelscale_vec, or use Scale..." ),
+						_( "Per-axis model scale is active" ), MB_OK );
+	}
 
 
 #ifdef USEPLUGINENTITIES
@@ -1107,6 +1175,12 @@ static void entity_check( GtkWidget *widget, gpointer data ){
 }
 
 static void entitylist_angle( GtkWidget *widget, gpointer data ){
+	if ( edit_entity != NULL && ModelTransform_IsEntity( ValueForKey( edit_entity, "classname" ) ) ) {
+		gtk_entry_set_text( GTK_ENTRY( EntWidgets[EntKeyField] ), "angle" );
+		gtk_entry_set_text( GTK_ENTRY( EntWidgets[EntValueField] ), (char*)data );
+		AddProp();
+		return;
+	}
 	SetKeyValue( edit_entity, "angle", (char*)data );
 	SetKeyValuePairs();
 }
@@ -1123,7 +1197,7 @@ static gint entityentry_keypress( GtkWidget* widget, GdkEventKey* event, gpointe
 
 		return TRUE;
 	}
-	else if ( event->keyval == GDK_KEY_Return ) {
+	else if ( event->keyval == GDK_KEY_Return || event->keyval == GDK_KEY_KP_Enter ) {
 		if ( widget == EntWidgets[EntKeyField] ) {
 			gtk_entry_set_text( GTK_ENTRY( EntWidgets[EntValueField] ), "" );
 			gtk_window_set_focus( GTK_WINDOW( g_pGroupDlg->m_pWidget ), EntWidgets[EntValueField] );
@@ -1450,6 +1524,7 @@ void GroupDlg::Create(){
 					g_signal_connect( G_OBJECT( entry ), "key-press-event",
 										G_CALLBACK( entityentry_keypress ), this );
 					EntWidgets[EntValueField] = entry;
+					gtk_widget_set_tooltip_text( entry, _( "Press Enter to apply. For models, modelscale_vec overrides modelscale; delete the vector key to use uniform scaling. Rotation angles are pitch yaw roll in degrees." ) );
 				}
 
 				{
@@ -1608,6 +1683,20 @@ void GroupDlg::Create(){
 						gtk_box_pack_start( GTK_BOX( vbox2 ), button, FALSE, FALSE, 0 );
 						gtk_widget_show( button );
 						g_signal_connect( G_OBJECT( button ), "clicked", G_CALLBACK( AssignModel ), NULL );
+					}
+					{
+						GtkWidget* button = gtk_button_new_with_label( _( "Scale..." ) );
+						gtk_box_pack_start( GTK_BOX( vbox2 ), button, FALSE, FALSE, 0 );
+						gtk_widget_show( button );
+						gtk_widget_set_tooltip_text( button, _( "Scale the selection by X/Y/Z factors. Model props resize in place." ) );
+						g_signal_connect( G_OBJECT( button ), "clicked", G_CALLBACK( DoScaleDlg ), NULL );
+					}
+					{
+						GtkWidget* button = gtk_button_new_with_label( _( "Rotate..." ) );
+						gtk_box_pack_start( GTK_BOX( vbox2 ), button, FALSE, FALSE, 0 );
+						gtk_widget_show( button );
+						gtk_widget_set_tooltip_text( button, _( "Rotate selected model props in place by world-axis degree increments." ) );
+						g_signal_connect( G_OBJECT( button ), "clicked", G_CALLBACK( DoRotateDlg ), NULL );
 					}
 				}
 

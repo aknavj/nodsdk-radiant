@@ -22,7 +22,10 @@
 // select.c
 #include "stdafx.h"
 #include <assert.h>
+#include <set>
 #include "filters.h"
+#include "groupdialog.h"
+#include "modeltransform.h"
 
 // externs
 CPtrArray g_SelectedFaces;
@@ -695,10 +698,30 @@ void Select_ApplyMatrix( bool bSnap, bool bRotation, int nAxis, float fDeg ){ //
 	face_t  *f;
 	int i, j;
 	vec3_t temp, tmporigin;
+	std::set<entity_t*> rotatedModels;
+	bool modelsChanged = false;
 
 	for ( b = selected_brushes.next ; b != &selected_brushes ; b = b->next )
 	{
 		if ( b->owner->eclass->fixedsize ) {
+			entity_t *entity = b->owner;
+			if ( bRotation && ModelTransform_IsEntity( ValueForKey( entity, "classname" ) ) ) {
+				if ( rotatedModels.insert( entity ).second ) {
+					float angles[3];
+					if ( entity->model.pEdit == NULL
+						 || !ModelRotation_Rotated( entity->model.pEdit->GetRotation(), nAxis, fDeg, angles ) ) {
+						Sys_FPrintf( SYS_WRN, "WARNING: cannot rotate model '%s': rotation must be finite and the model edit interface must be available\n",
+									 ValueForKey( entity, "model" ) );
+						continue;
+					}
+					char value[128];
+					sprintf( value, "%.9g %.9g %.9g", angles[0], angles[1], angles[2] );
+					DeleteKey( entity, "angle" );
+					SetKeyValue( entity, "angles", value );
+					modelsChanged = true;
+				}
+				continue;
+			}
 			VectorCopy( b->owner->origin, tmporigin );
 			// transform the origin point
 			VectorSubtract( b->owner->origin, select_origin, temp );
@@ -753,6 +776,12 @@ void Select_ApplyMatrix( bool bSnap, bool bRotation, int nAxis, float fDeg ){ //
 				}
 			}
 			Brush_Build( b, bSnap,true,false,false ); // don't filter
+		}
+	}
+	if ( modelsChanged ) {
+		Sys_MarkMapModified();
+		if ( EntWidgets[EntProps] != NULL ) {
+			SetKeyValuePairs();
 		}
 	}
 }
@@ -1006,11 +1035,39 @@ void Select_FlipAxis( int axis ){
 
 
 void Select_Scale( float x, float y, float z ){
+	if ( x == 1 && y == 1 && z == 1 ) {
+		return;
+	}
 	Select_GetMid( select_origin );
+	const float factors[3] = { x, y, z };
+	std::set<entity_t*> scaledModels;
+	bool modelsChanged = false;
 	for ( brush_t* b = selected_brushes.next ; b != &selected_brushes ; b = b->next )
 	{
-		// ignore fixedsize entities
 		if ( b->owner->eclass->fixedsize ) {
+			entity_t *entity = b->owner;
+			if ( ModelTransform_IsEntity( ValueForKey( entity, "classname" ) )
+				 && scaledModels.insert( entity ).second ) {
+				float scale[3];
+				if ( !ModelScale_Scaled( ValueForKey( entity, "modelscale" ),
+										 ValueForKey( entity, "modelscale_vec" ), factors, scale ) ) {
+					Sys_FPrintf( SYS_WRN, "WARNING: cannot scale model '%s': scale keys and resulting scales must be finite and nonzero, and factors must be positive\n",
+								 ValueForKey( entity, "model" ) );
+					continue;
+				}
+				char value[128];
+				if ( scale[0] == scale[1] && scale[1] == scale[2] ) {
+					sprintf( value, "%.9g", scale[0] );
+					SetKeyValue( entity, "modelscale", value );
+					DeleteKey( entity, "modelscale_vec" );
+				}
+				else {
+					sprintf( value, "%.9g %.9g %.9g", scale[0], scale[1], scale[2] );
+					SetKeyValue( entity, "modelscale_vec", value );
+					DeleteKey( entity, "modelscale" );
+				}
+				modelsChanged = true;
+			}
 			continue;
 		}
 		for ( face_t* f = b->brush_faces ; f ; f = f->next )
@@ -1038,12 +1095,22 @@ void Select_Scale( float x, float y, float z ){
 			Patch_Scale( b->pPatch, select_origin, v );
 		}
 	}
+	if ( modelsChanged ) {
+		Sys_MarkMapModified();
+		if ( EntWidgets[EntProps] != NULL ) {
+			SetKeyValuePairs();
+		}
+	}
 }
 
 void Select_RotateAxis( int axis, float deg, bool bPaint, bool bMouse ){
 	int i;
 	vec_t c, s;
 
+	if ( axis < 0 || axis > 2 || !( deg >= -FLT_MAX && deg <= FLT_MAX ) ) {
+		Sys_FPrintf( SYS_WRN, "WARNING: rotation requires a valid X/Y/Z axis and a finite angle\n" );
+		return;
+	}
 	if ( deg == 0 ) {
 		return;
 	}
@@ -1055,17 +1122,6 @@ void Select_RotateAxis( int axis, float deg, bool bPaint, bool bMouse ){
 	{
 		Select_GetMid( select_origin );
 	}
-
-	/*
-	   if(axis == 2)
-	   {
-	   vec3_t rotation;
-	   VectorSet(rotation, 0, 0, 360 - deg);
-	   for(brush_t *b = selected_brushes.next; b != &selected_brushes; b = b->next)
-	    if(b->owner->model.pEdit)
-	      b->owner->model.pEdit->Rotate(select_origin, rotation);
-	   }
-	 */
 
 	select_fliporder = false;
 

@@ -20,6 +20,7 @@
  */
 
 #include "cpicosurface.h"
+#include "nodmodel.h"
 
 // public
 
@@ -37,7 +38,7 @@ CPicoSurface::CPicoSurface( picoSurface_t *pSurface ){
 	// jdolan: If the shader fails to load, try skin.tga in the model's
 	// directory as a fall-back. This is a hack for malformed models.
 
-	if ( m_shader->IsDefault() ) {
+	if ( m_shader->IsDefault() && !NodModelIsSupported( m_pSurface->model->name ) ) {
 		Sys_FPrintf( SYS_WRN, "WARNING: Failed to load shader %s for %s\n", m_shader->getName(), m_pSurface->model->name );
 
 		gchar *dir = g_path_get_dirname( m_pSurface->model->name );
