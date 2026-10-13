@@ -885,12 +885,22 @@ void QE_InitVFS( void ){
 		directory = g_qeglobals.m_strHomeGame.GetBuffer();
 		directory += g_pGameDescription->mBaseGame;
 		vfsInitDirectory( directory.GetBuffer() );
+
 	}
 
 	// <fs_basepath>/<fs_main>
 	directory = g_pGameDescription->mEnginePath;
 	directory += g_pGameDescription->mBaseGame;
 	vfsInitDirectory( directory.GetBuffer() );
+
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME && g_pGameDescription->mNodAssetPath.GetLength() ) {
+		directory = g_pGameDescription->mNodAssetPath;
+		if ( CheckFile( directory.GetBuffer() ) != PATH_DIRECTORY ) {
+			Error( "NOD asset path is not a directory: %s\n", directory.GetBuffer() );
+		}
+		Sys_Printf( "Mounting read-only NOD assets: %s\n", directory.GetBuffer() );
+		vfsInitDirectory( directory.GetBuffer() );
+	}
 }
 
 void QE_Init( void ){

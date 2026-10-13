@@ -37,6 +37,33 @@
 #include <stdio.h>
 #include "image.h"
 #include "lbmlib.h"
+#include "ddsimage.h"
+
+static void LoadDDS( const char *filename, unsigned char **pic, int *width, int *height ){
+	*pic = NULL;
+	*width = *height = 0;
+	void *buffer = NULL;
+	const int length = vfsLoadFile( filename, &buffer, 0 );
+	if ( length <= 0 ) {
+		g_FuncTable.m_pfnSysFPrintf( SYS_ERR, "Unable to read DDS image %s\n", filename );
+		if ( buffer ) {
+			vfsFreeFile( buffer );
+		}
+		return;
+	}
+	DDSImage image;
+	std::string error;
+	const bool decoded = DDSDecodeImage( static_cast<unsigned char *>( buffer ), length, image, error );
+	vfsFreeFile( buffer );
+	if ( !decoded ) {
+		g_FuncTable.m_pfnSysFPrintf( SYS_ERR, "Unable to decode DDS image %s: %s\n", filename, error.c_str() );
+		return;
+	}
+	*pic = static_cast<unsigned char *>( g_malloc( image.pixels.size() ) );
+	memcpy( *pic, image.pixels.data(), image.pixels.size() );
+	*width = image.width;
+	*height = image.height;
+}
 
 // =============================================================================
 // global tables
@@ -73,6 +100,7 @@ extern "C" CSynapseClient * SYNAPSE_DLL_EXPORT Synapse_EnumerateInterfaces( cons
 
 	g_SynapseClient.AddAPI( IMAGE_MAJOR, "jpg", sizeof( _QERPlugImageTable ) );
 	g_SynapseClient.AddAPI( IMAGE_MAJOR, "tga", sizeof( _QERPlugImageTable ) );
+	g_SynapseClient.AddAPI( IMAGE_MAJOR, "dds", sizeof( _QERPlugImageTable ) );
 	// NOTE: these two are for md2 support - check b_isQuake2 here?
 	// instead of requesting them systematically, we could request them per-config before enabling Q2 support
 	g_SynapseClient.AddAPI( IMAGE_MAJOR, "pcx", sizeof( _QERPlugImageTable ) );
@@ -89,6 +117,10 @@ extern "C" CSynapseClient * SYNAPSE_DLL_EXPORT Synapse_EnumerateInterfaces( cons
 bool CSynapseClientImage::RequestAPI( APIDescriptor_t *pAPI ){
 	if ( !strcmp( pAPI->major_name, "image" ) ) {
 		_QERPlugImageTable* pTable = static_cast<_QERPlugImageTable*>( pAPI->mpTable );
+		if ( !strcmp( pAPI->minor_name, "dds" ) ) {
+			pTable->m_pfnLoadImage = &LoadDDS;
+			return true;
+		}
 		if ( !strcmp( pAPI->minor_name, "jpg" ) ) {
 			pTable->m_pfnLoadImage = &LoadJPG;
 			return true;
@@ -122,5 +154,5 @@ bool CSynapseClientImage::OnActivate() {
 #include "version.h"
 
 const char* CSynapseClientImage::GetInfo(){
-	return "image formats JPG TGA PCX BMP module built " __DATE__ " " RADIANT_VERSION;
+	return "image formats DDS JPG TGA PCX BMP module built " __DATE__ " " RADIANT_VERSION;
 }

@@ -53,6 +53,7 @@ class Config:
                         'UnvanquishedPack',
                         'Q1Pack',
                         'Q2RePack',
+                        'SCGhostPack',
         ]
 
     def __repr__( self ):
@@ -107,7 +108,7 @@ class Config:
 
             # PIC versions of the libs for the modules
             shlib_objects_extra = {}
-            for project in [ 'libs/synapse/synapse.vcxproj', 'libs/mathlib/mathlib.vcxproj', 'libs/picomodel/picomodel.vcxproj', 'libs/cmdlib/cmdlib.vcxproj', 'libs/splines/splines.vcxproj' ]:
+            for project in [ 'libs/synapse/synapse.vcxproj', 'libs/mathlib/mathlib.vcxproj', 'libs/picomodel/picomodel.vcxproj', 'libs/cmdlib/cmdlib.vcxproj', 'libs/splines/splines.vcxproj', 'libs/ddslib/ddslib.vcxproj' ]:
                 ( libpath, libname ) = os.path.split( project )
                 libname = os.path.splitext( libname )[0]
                 config['shared'] = True
@@ -152,6 +153,8 @@ class Config:
                     shlib_objects += shlib_objects_extra['splines']
                 elif ( libname == 'entity' ):
                     shlib_objects += shlib_objects_extra['mathlib']
+                elif ( libname == 'image' ):
+                    shlib_objects += shlib_objects_extra['ddslib']
                 elif ( libname == 'map' ):
                     shlib_objects += shlib_objects_extra['cmdlib']
                 elif ( libname == 'model' ):
@@ -306,6 +309,10 @@ class Config:
     def FetchGamePaks( self, path ):
         for pak in self.setup_packs:
             pak_path = os.path.join( path, 'installs', pak )
+            if pak == 'SCGhostPack':
+                source = os.path.join( os.path.dirname( os.path.abspath( __file__ ) ), 'gamepacks', pak )
+                shutil.copytree( source, pak_path, dirs_exist_ok=True )
+                continue
             if pak == 'Q2RePack':
                 self.GitCloneOrUpdate( 'https://github.com/TTimo/Q2RePack.git', pak_path )
                 continue

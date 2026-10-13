@@ -850,8 +850,6 @@ int mainRadiant( int argc, char* argv[] ) {
 
 #if defined( _WIN32 ) && defined( _MSC_VER ) && !defined( _DEBUG )
 #include <dbghelp.h>
-#include <shellapi.h>
-#include <shlobj.h>
 #include <strsafe.h> //StringCchPrintf
 
 int GenerateDump( EXCEPTION_POINTERS* pExceptionPointers ) {

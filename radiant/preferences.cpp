@@ -878,6 +878,11 @@ CGameDescription::CGameDescription( xmlDocPtr pDoc, const Str &GameFile ){
 	}
 
 	mShaderPath = xmlGetProp( pNode, (const xmlChar *)"shaderpath" );
+	prop = (char*)xmlGetProp( pNode, (const xmlChar *)"nod_assetpath" );
+	if ( prop ) {
+		mNodAssetPath = prop;
+		xmlFree( prop );
+	}
 	if ( !mShaderPath.GetLength() ) {
 		mShaderPath = "scripts/";
 		mShaderlist = "scripts/shaderlist.txt";
@@ -935,6 +940,9 @@ void CGameDescription::Dump(){
 	Sys_Printf( "executables path     : '%s'\n", mExecutablesPath.GetBuffer() );
 	Sys_Printf( "engine               : '%s'\n", mEngine.GetBuffer() );
 	Sys_Printf( "shaderlist           : '%s'\n", mShaderlist.GetBuffer() );
+	if ( mGameFile == SCGHOST_GAME ) {
+		Sys_Printf( "NOD asset path       : '%s'\n", mNodAssetPath.GetBuffer() );
+	}
 	Sys_Printf( "caulk shader         : '%s'\n", mCaulkShader.GetBuffer() );
 	Sys_Printf( "prefix               : '%s'\n", mUserPathPrefix.GetBuffer() );
 	Sys_Printf( "default texture scale: %g\n", mTextureDefaultScale );
@@ -3395,6 +3403,15 @@ void CGameInstall::OnGameSelectChanged( GtkWidget *widget, gpointer data ) {
 	GtkWidget *button = GTK_WIDGET( g_object_get_data( G_OBJECT( i->m_pWidget ), "executable_button" ) );
 
 	int game_id = i->m_availGames[ i->m_nComboSelect ];
+	GtkWidget *nodLabel = GTK_WIDGET( g_object_get_data( G_OBJECT( i->m_pWidget ), "nod_assets_label" ) );
+	GtkWidget *nodEntry = GTK_WIDGET( g_object_get_data( G_OBJECT( i->m_pWidget ), "nod_assets_entry" ) );
+	if ( game_id == GAME_SCGHOST ) {
+		gtk_widget_show( nodLabel );
+		gtk_widget_show( nodEntry );
+	} else {
+		gtk_widget_hide( nodLabel );
+		gtk_widget_hide( nodEntry );
+	}
 	if ( game_id == GAME_Q2 || game_id == GAME_QUETOO || game_id == GAME_Q2_REMASTER ) {
 		gtk_widget_show( label );
 		gtk_widget_show( entry );
@@ -3403,6 +3420,17 @@ void CGameInstall::OnGameSelectChanged( GtkWidget *widget, gpointer data ) {
 		gtk_widget_hide( label );
 		gtk_widget_hide( entry );
 		gtk_widget_hide( button );
+	}
+}
+
+void CGameInstall::OnBtnBrowseNodAssets( GtkWidget *widget, gpointer data ) {
+	CGameInstall* i = static_cast<CGameInstall*>( data );
+	char *dir = dir_dialog( i->m_pWidget, _( "Select NOD asset directory (contains Materials)" ), NULL );
+	i->UpdateData( TRUE );
+	if ( dir != NULL ) {
+		i->m_strNodAssets = dir;
+		i->UpdateData( FALSE );
+		g_free( dir );
 	}
 }
 
@@ -3488,6 +3516,9 @@ void CGameInstall::BuildDialog() {
 		case GAME_UNVANQUISHED:
 			gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( game_select_combo ), _( "Unvanquished" ) );
 			break;
+		case GAME_SCGHOST:
+			gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( game_select_combo ), _( "StarCraft Ghost (NOD authoring)" ) );
+			break;
 		}
 		iGame++;
 	}
@@ -3556,6 +3587,29 @@ void CGameInstall::BuildDialog() {
 	gtk_box_pack_start( GTK_BOX( hbox ), button, FALSE, FALSE, 0 );
 	gtk_widget_show( button );
 	g_object_set_data( G_OBJECT( dlg ), "executable_button", button );
+
+	text = gtk_label_new( _( "NOD assets (optional, read-only)" ) );
+	gtk_misc_set_alignment( GTK_MISC( text ), 1.0, 0.5 );
+	gtk_table_attach( GTK_TABLE( table ), text, 0, 1, 4, 5,
+					  (GtkAttachOptions) ( GTK_FILL ), (GtkAttachOptions) ( 0 ), 0, 0 );
+	gtk_widget_show( text );
+	g_object_set_data( G_OBJECT( dlg ), "nod_assets_label", text );
+
+	hbox = gtk_hbox_new( FALSE, 5 );
+	gtk_table_attach( GTK_TABLE( table ), hbox, 1, 2, 4, 5,
+					  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ), (GtkAttachOptions) ( 0 ), 0, 0 );
+	gtk_widget_show( hbox );
+	g_object_set_data( G_OBJECT( dlg ), "nod_assets_entry", hbox );
+
+	entry = gtk_entry_new();
+	gtk_box_pack_start( GTK_BOX( hbox ), entry, TRUE, TRUE, 0 );
+	gtk_widget_show( entry );
+	AddDialogData( entry, &m_strNodAssets, DLG_ENTRY_TEXT );
+
+	button = gtk_button_new_with_label( _( "..." ) );
+	g_signal_connect( G_OBJECT( button ), "clicked", G_CALLBACK( OnBtnBrowseNodAssets ), this );
+	gtk_box_pack_start( GTK_BOX( hbox ), button, FALSE, FALSE, 0 );
+	gtk_widget_show( button );
 
 	hbox = gtk_hbox_new( FALSE, 0 );
 	gtk_box_pack_start( GTK_BOX( vbox1 ), hbox, FALSE, FALSE, 0 );
@@ -3661,6 +3715,10 @@ void CGameInstall::Run() {
 		gamePack = UNVANQUISHED_PACK;
 		gameFilePath += UNVANQUISHED_GAME;
 		break;
+	case GAME_SCGHOST:
+		gamePack = SCGHOST_PACK;
+		gameFilePath += SCGHOST_GAME;
+		break;
 	default:
 		Error( "Invalid game selected: %d", m_availGames[ m_nComboSelect ] );
 	}
@@ -3702,6 +3760,25 @@ void CGameInstall::Run() {
 		fprintf( fg, "  no_patch=\"true\"\n" );
 		fprintf( fg, "  default_scale=\"1.0\"\n" );
 
+		break;
+	}
+	case GAME_SCGHOST: {
+		if ( m_strNodAssets.GetLength() ) {
+			xmlChar *escaped = xmlEncodeSpecialChars( NULL, reinterpret_cast<const xmlChar *>( m_strNodAssets.GetBuffer() ) );
+			if ( !escaped ) {
+				Error( "Failed to encode NOD asset path\n" );
+			}
+			fprintf( fg, "  nod_assetpath=\"%s\"\n", reinterpret_cast<const char *>( escaped ) );
+			xmlFree( escaped );
+		}
+		fprintf( fg, "  prefix=\".scghost\"\n" );
+		fprintf( fg, "  basegame=\"nod\"\n" );
+		fprintf( fg, "  no_patch=\"true\"\n" );
+		fprintf( fg, "  no_maps_in_home=\"true\"\n" );
+		fprintf( fg, "  default_scale=\"1.0\"\n" );
+		fprintf( fg, "  " ENGINE_ATTRIBUTE "=\"\"\n" );
+		fprintf( fg, "  " MP_ENGINE_ATTRIBUTE "=\"\"\n" );
+		fprintf( fg, "  caulk_shader=\"textures/nod/placeholder\"\n" );
 		break;
 	}
 	case GAME_Q2:
@@ -3944,6 +4021,9 @@ void CGameInstall::ScanGames() {
 		}
 		if ( stricmp( dirname, UNVANQUISHED_PACK ) == 0) {
 			m_availGames[ iGame++ ] = GAME_UNVANQUISHED;
+		}
+		if ( stricmp( dirname, SCGHOST_PACK ) == 0 ) {
+			m_availGames[ iGame++ ] = GAME_SCGHOST;
 		}
 	}
 	Sys_Printf( "No installable games found in: %s\n",

@@ -526,6 +526,36 @@ void BuildShaderList(){
 				g_free( pBuff );
 			}
 		}
+		if ( g_pGameDescription->mGameFile == SCGHOST_GAME && g_pGameDescription->mNodAssetPath.GetLength() ) {
+			nLen = vfsLoadFile( "Materials/shaderlist.txt", reinterpret_cast<void**>( &pBuff ), 0 );
+			if ( nLen <= 0 ) {
+				Sys_FPrintf( SYS_ERR, "Unable to read NOD Materials/shaderlist.txt\n" );
+				return;
+			}
+			StartTokenParsing( pBuff );
+			while ( GetToken( true ) ) {
+				if ( strlen( token ) + strlen( "Materials/.nsa" ) >= sizeof( dirstring ) ) {
+					Sys_FPrintf( SYS_ERR, "NOD material archive name is too long: %s\n", token );
+					continue;
+				}
+				sprintf( dirstring, "Materials/%s%s", token, g_str_has_suffix( token, ".nsa" ) ? "" : ".nsa" );
+				if ( !vfsGetFileCount( dirstring, 0 ) ) {
+					Sys_FPrintf( SYS_WRN, "NOD shaderlist references a missing archive: %s\n", dirstring );
+					continue;
+				}
+				bool listed = false;
+				for ( GSList *file = l_shaderfiles; file; file = file->next ) {
+					if ( !strcasecmp( dirstring, static_cast<const char *>( file->data ) ) ) {
+						listed = true;
+						break;
+					}
+				}
+				if ( !listed ) {
+					l_shaderfiles = g_slist_append( l_shaderfiles, strdup( dirstring ) );
+				}
+			}
+			vfsFreeFile( pBuff );
+		}
 	}
 }
 
@@ -650,6 +680,25 @@ void Texture_ListDirectory(){
 				shaders_count, textures_count );
 
 	vfsClearFileDirList( &files );
+
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME && g_pGameDescription->mNodAssetPath.GetLength() ) {
+		sprintf( dirstring, "Materials/%s", texture_directory );
+		files = vfsGetFileList( dirstring, "dds" );
+		for ( temp = files; temp; temp = temp->next ) {
+			if ( strlen( static_cast<const char *>( temp->data ) ) + strlen( "textures/nod/" ) >= QER_MAX_NAMELEN ) {
+				Sys_FPrintf( SYS_WRN, "NOD DDS name exceeds the editor limit: %s\n", static_cast<const char *>( temp->data ) );
+				continue;
+			}
+			sprintf( name, "textures/nod/%s", static_cast<const char *>( temp->data ) );
+			StripExtension( name );
+			if ( QERApp_HasShader( name ) ) {
+				QERApp_Shader_ForName( name );
+			} else {
+				QERApp_CreateShader_ForTextureName( name );
+			}
+		}
+		vfsClearFileDirList( &files );
+	}
 }
 
 /*
@@ -695,6 +744,13 @@ void FillTextureList( GSList** pArray )
 			}
 		}
 		vfsClearFileDirList( &texdirs_tmp );
+		if ( g_pGameDescription->mGameFile == SCGHOST_GAME && g_pGameDescription->mNodAssetPath.GetLength() ) {
+			texdirs_tmp = vfsGetDirList( "Materials" );
+			for ( p = texdirs_tmp; p; p = p->next ) {
+				texdirs = g_slist_append( texdirs, g_strdup( static_cast<const char *>( p->data ) ) );
+			}
+			vfsClearFileDirList( &texdirs_tmp );
+		}
 	}
 
 	// scan the shaders in shaderlist.txt
@@ -1157,6 +1213,22 @@ void Texture_ShowStartupShaders(){
 	}
 
 	if ( g_PrefsDlg.m_nShader == PrefsDlg::SHADER_ALL ) {
+		if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+			BuildShaderList();
+			for ( GSList *file = l_shaderfiles; file; file = file->next ) {
+				ExtractFileName( static_cast<const char *>( file->data ), texture_directory );
+				StripExtension( texture_directory );
+				const size_t length = strlen( texture_directory );
+				if ( length + 1 >= sizeof( texture_directory ) ) {
+					Sys_FPrintf( SYS_ERR, "NOD material browser directory is too long: %s\n", texture_directory );
+					continue;
+				}
+				strcat( texture_directory, "/" );
+				Texture_ShowDirectory();
+			}
+			Texture_ShowAll();
+			return;
+		}
 		int count, i;
 		char filename[1024];
 		char   *pBuff;
@@ -1762,7 +1834,8 @@ void PreloadShaders(){
 	Str shadername;
 	while ( lst )
 	{
-		shadername = g_pGameDescription->mShaderPath;
+		shadername = g_str_has_prefix( static_cast<const char *>( lst->data ), "Materials/" ) ?
+			"" : g_pGameDescription->mShaderPath.GetBuffer();
 		shadername += (char*)lst->data;
 		QERApp_LoadShaderFile( shadername.GetBuffer() );
 		lst = lst->next;

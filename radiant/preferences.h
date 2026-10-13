@@ -179,6 +179,7 @@ Str mMultiplayerEngine;   ///< engine name
 Str mUserPathPrefix;   ///< prefix for ~/.q3a ~/.wolf init on *nix, or \My Document\My Games\ on Windows
 Str mShaderPath;   ///< the path in which to look for shaders
 Str mShaderlist;   ///< shaderlist file
+Str mNodAssetPath;
 float mTextureDefaultScale;   ///< default scale (0.5 in q3, 1.0 in q1/q2, 0.25 in JK2 ..)
 bool mEClassSingleLoad;   ///< only load a single eclass definition file
 bool mNoPatch;   ///< this game doesn't support patch technology
@@ -219,6 +220,7 @@ void Dump();
 #define WOLF_GAME "wolf.game"
 #define Q1_GAME "q1.game"
 #define UNVANQUISHED_GAME "unvanquished.game"
+#define SCGHOST_GAME "scghost.game"
 
 #define Q3_PACK "Q3Pack"
 #define URT_PACK "UrTPack"
@@ -237,6 +239,7 @@ void Dump();
 #define WOLF_PACK "WolfPack"
 #define Q1_PACK "Q1Pack"
 #define UNVANQUISHED_PACK "UnvanquishedPack"
+#define SCGHOST_PACK "SCGhostPack"
 
 class CGameInstall : public Dialog {
 public:
@@ -247,6 +250,7 @@ public:
 
   static void OnBtnBrowseEngine( GtkWidget *widget, gpointer data );
   static void OnBtnBrowseExecutables( GtkWidget *widget, gpointer data );
+  static void OnBtnBrowseNodAssets( GtkWidget *widget, gpointer data );
   static void OnGameSelectChanged( GtkWidget *widget, gpointer data );
 
   enum gameType_e {
@@ -268,6 +272,7 @@ public:
 	GAME_Q1,
 	GAME_UNVANQUISHED,
 	GAME_Q2_REMASTER,
+	GAME_SCGHOST,
 	GAME_COUNT
   };
 
@@ -276,6 +281,7 @@ protected:
   Str m_strMod;
   Str m_strEngine;
   Str m_strExecutables;
+  Str m_strNodAssets;
   int m_nComboSelect;
 
   // maps from m_nComboSelect to the games

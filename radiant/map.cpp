@@ -193,8 +193,15 @@ void Map_Free( void ){
 	world_entity = NULL;
 }
 
+static const char *Map_PlayerStartClassname(){
+	return g_pGameDescription->mGameFile == SCGHOST_GAME ? "ghost" : "info_player_start";
+}
+
 entity_t *AngledEntity(){
-	entity_t *ent = Map_FindClass( "info_player_start" );
+	entity_t *ent = Map_FindClass( Map_PlayerStartClassname() );
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+		return ent;
+	}
 	if ( !ent ) {
 		ent = Map_FindClass( "info_player_deathmatch" );
 	}
@@ -227,6 +234,12 @@ void Map_StartPosition(){
 		GetVectorForKey( ent, "origin", g_pParentWnd->GetCamWnd()->Camera()->origin );
 		GetVectorForKey( ent, "origin", g_pParentWnd->GetXYWnd()->GetOrigin() );
 		g_pParentWnd->GetCamWnd()->Camera()->angles[YAW] = FloatForKey( ent, "angle" );
+		if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+			vec3_t angles;
+			GetVectorForKey( ent, "angles", angles );
+			g_pParentWnd->GetCamWnd()->Camera()->angles[PITCH] = angles[0];
+			g_pParentWnd->GetCamWnd()->Camera()->angles[YAW] = angles[1];
+		}
 	}
 	else
 	{
@@ -929,15 +942,20 @@ void AddRegionBrushes( void ){
 		}
 	}
 
-	// write the info_playerstart
 	region_startpoint = Entity_Alloc();
-	SetKeyValue( region_startpoint, "classname", "info_player_start" );
-	region_startpoint->eclass = Eclass_ForName( "info_player_start", false );
+	const char *playerStartClassname = Map_PlayerStartClassname();
+	SetKeyValue( region_startpoint, "classname", playerStartClassname );
+	region_startpoint->eclass = Eclass_ForName( playerStartClassname, false );
 	char sTmp[1024];
 	sprintf( sTmp, "%d %d %d", (int)vOrig[0], (int)vOrig[1], (int)vOrig[2] );
 	SetKeyValue( region_startpoint, "origin", sTmp );
-	sprintf( sTmp, "%d", (int)g_pParentWnd->GetCamWnd()->Camera()->angles[YAW] );
-	SetKeyValue( region_startpoint, "angle", sTmp );
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+		sprintf( sTmp, "0 %d 0", (int)g_pParentWnd->GetCamWnd()->Camera()->angles[YAW] );
+		SetKeyValue( region_startpoint, "angles", sTmp );
+	} else {
+		sprintf( sTmp, "%d", (int)g_pParentWnd->GetCamWnd()->Camera()->angles[YAW] );
+		SetKeyValue( region_startpoint, "angle", sTmp );
+	}
 	// empty array of children
 	region_startpoint->pData = new CPtrArray;
 }
@@ -1287,13 +1305,16 @@ void MemFile_fprintf( MemStream* pMemFile, const char* pText, ... ){
    ==============
  */
 void Region_SpawnPoint( FILE *f ){
-	// write the info_player_start, we use the camera position
 	fprintf( f, "{\n" );
-	fprintf( f, "\"classname\" \"info_player_start\"\n" );
+	fprintf( f, "\"classname\" \"%s\"\n", Map_PlayerStartClassname() );
 	fprintf( f, "\"origin\" \"%i %i %i\"\n",
 			 (int)g_pParentWnd->GetCamWnd()->Camera()->origin[0],
 			 (int)g_pParentWnd->GetCamWnd()->Camera()->origin[1],
 			 (int)g_pParentWnd->GetCamWnd()->Camera()->origin[2] );
-	fprintf( f, "\"angle\" \"%i\"\n", (int)g_pParentWnd->GetCamWnd()->Camera()->angles[YAW] );
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+		fprintf( f, "\"angles\" \"0 %i 0\"\n", (int)g_pParentWnd->GetCamWnd()->Camera()->angles[YAW] );
+	} else {
+		fprintf( f, "\"angle\" \"%i\"\n", (int)g_pParentWnd->GetCamWnd()->Camera()->angles[YAW] );
+	}
 	fprintf( f, "}\n" );
 }
