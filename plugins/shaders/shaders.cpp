@@ -730,6 +730,8 @@ void CShader::RegisterActivate(){
 
 void CShader::Try_Activate(){
 	if ( !m_strTextureName.GetLength() ) {
+		// A cached fallback must still register a new caller reference in Activate().
+		m_pTexture = NULL;
 		return;
 	}
 	m_pTexture = QERApp_Try_Texture_ForName( m_strTextureName.GetBuffer() );
