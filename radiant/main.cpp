@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: main.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -90,6 +116,7 @@ gint try_destroy_splash( gpointer data ){
 		gtk_widget_destroy( splash_screen );
 		splash_screen = NULL;
 	}
+
 	return FALSE;
 }
 
@@ -110,8 +137,9 @@ static void create_splash() {
     gtk_container_add(GTK_CONTAINER(splash_screen), image);
     gtk_widget_show_all(splash_screen);
 
-	while(gtk_events_pending())
+	while(gtk_events_pending()) {
 		gtk_main_iteration();
+}
 }
 #endif
 
@@ -164,10 +192,12 @@ int loki_getmountpoint( const char *device, char *mntpt, int max_size ){
 					}
 				}
 			}
+
 			if ( strncmp( mntdev, "/dev", 4 ) ||
 				 realpath( mntdev, mntdevpath ) == NULL ) {
 				continue;
 			}
+
 			if ( strcmp( mntdevpath, devpath ) == 0 ) {
 				mounted = 1;
 				assert( (int)strlen( mntent->mnt_dir ) < max_size );
@@ -176,8 +206,10 @@ int loki_getmountpoint( const char *device, char *mntpt, int max_size ){
 				break;
 			}
 		}
+
 		endmntent( mountfp );
 	}
+
 	return( mounted );
 }
 #endif
@@ -229,6 +261,7 @@ void error_redirect( const gchar *domain, GLogLevelFlags log_level, const gchar 
 	else {
 		strncpy( buf, "**", sizeof(buf)-1 );
 	}
+
 	strncat( buf, "-", sizeof(buf)-strlen(buf)-1 );
 
 	switch ( log_level )
@@ -240,6 +273,7 @@ void error_redirect( const gchar *domain, GLogLevelFlags log_level, const gchar 
 		else{
 			strncat( buf, "ERROR **: ", sizeof(buf)-strlen(buf)-1 );
 		}
+
 		break;
 	case G_LOG_LEVEL_CRITICAL:
 		if ( in_recursion ) {
@@ -248,6 +282,7 @@ void error_redirect( const gchar *domain, GLogLevelFlags log_level, const gchar 
 		else{
 			strncat( buf, "CRITICAL **: ", sizeof(buf)-strlen(buf)-1 );
 		}
+
 		break;
 	case G_LOG_LEVEL_WARNING:
 		if ( in_recursion ) {
@@ -256,6 +291,7 @@ void error_redirect( const gchar *domain, GLogLevelFlags log_level, const gchar 
 		else{
 			strncat( buf, "WARNING **: ", sizeof(buf)-strlen(buf)-1 );
 		}
+
 		break;
 	case G_LOG_LEVEL_MESSAGE:
 		if ( in_recursion ) {
@@ -264,6 +300,7 @@ void error_redirect( const gchar *domain, GLogLevelFlags log_level, const gchar 
 		else{
 			strncat( buf, "Message: ", sizeof(buf)-strlen(buf)-1 );
 		}
+
 		break;
 	case G_LOG_LEVEL_INFO:
 		if ( in_recursion ) {
@@ -272,6 +309,7 @@ void error_redirect( const gchar *domain, GLogLevelFlags log_level, const gchar 
 		else{
 			strncat( buf, "INFO: ", sizeof(buf)-strlen(buf)-1 );
 		}
+
 		break;
 	case G_LOG_LEVEL_DEBUG:
 		if ( in_recursion ) {
@@ -280,6 +318,7 @@ void error_redirect( const gchar *domain, GLogLevelFlags log_level, const gchar 
 		else{
 			strncat( buf, "DEBUG: ", sizeof(buf)-strlen(buf)-1 );
 		}
+
 		break;
 	default:
 		/* we are used for a log level that is not defined by GLib itself,
@@ -291,6 +330,7 @@ void error_redirect( const gchar *domain, GLogLevelFlags log_level, const gchar 
 		else{
 			strncat( buf, "LOG (", sizeof(buf)-strlen(buf)-1 );
 		}
+
 		if ( log_level ) {
 			gchar string[] = "0x00): ";
 			gchar *p = string + 2;
@@ -328,6 +368,10 @@ void error_redirect( const gchar *domain, GLogLevelFlags log_level, const gchar 
 #define LOCALEDIR "lang"
 
 int mainRadiant( int argc, char* argv[] ) {
+	if ( !g_thread_supported() ) {
+		g_thread_init( NULL );
+	}
+
 	const char *libgl;
 	int i, j, k;
 
@@ -439,15 +483,18 @@ int mainRadiant( int argc, char* argv[] ) {
 
 	for ( i = 1; i < argc; i++ )
 	{
-		for ( k = i; k < argc; k++ )
+		for ( k = i; k < argc; k++ ) {
 			if ( argv[k] != NULL ) {
 				break;
 			}
+		}
 
 		if ( k > i ) {
 			k -= i;
-			for ( j = i + k; j < argc; j++ )
+			for ( j = i + k; j < argc; j++ ) {
 				argv[j - k] = argv[j];
+			}
+
 			argc -= k;
 		}
 	}
@@ -485,6 +532,7 @@ int mainRadiant( int argc, char* argv[] ) {
 			gtk_MessageBox( NULL, msg, _( "Radiant - Network mode" ), MB_OK );
 			g_strTempPath = "C:\\";
 		}
+
 		g_strTempPath += "\\RadiantSettings\\";
 		Q_mkdir( g_strTempPath.GetBuffer(), 0755 );
 		g_strTempPath += RADIANT_VERSION;
@@ -506,6 +554,7 @@ int mainRadiant( int argc, char* argv[] ) {
 	} else {
 		g_strTempPath = g_get_home_dir();
 	}
+
 	g_strTempPath += "/.radiant/";
 	Q_mkdir( g_strTempPath.GetBuffer(), 0775 );
 	g_strTempPath += RADIANT_VERSION;
@@ -522,6 +571,7 @@ int mainRadiant( int argc, char* argv[] ) {
 	} else {
 		g_strGamesPath = g_strAppPath;
 	}
+
 	g_strGamesPath += "games/";
 	Q_mkdir( g_strGamesPath.GetBuffer(), 0775 );
 
@@ -577,6 +627,7 @@ int mainRadiant( int argc, char* argv[] ) {
 			gtk_MessageBox( NULL, _( "Removed global settings, choose OK to close Radiant." ), _( "Radiant" ), MB_OK );
 			_exit( -1 );
 		}
+
 		msg = _( "Logging console output to " );
 		msg += g_strTempPath;
 		msg += _( "radiant.log\nRefer to the log if Radiant fails to start again." );
@@ -617,8 +668,10 @@ int mainRadiant( int argc, char* argv[] ) {
 		fread( buf, 1, 10, ver_file );
 		// chomp it (the hard way)
 		chomp = 0;
-		while ( buf[chomp] >= '0' && buf[chomp] <= '9' )
+		while ( buf[chomp] >= '0' && buf[chomp] <= '9' ) {
 			chomp++;
+		}
+
 		buf[chomp] = '\0';
 		if ( strcmp( buf, RADIANT_MAJOR_VERSION ) ) {
 			Sys_FPrintf( SYS_ERR, "ERROR: file RADIANT_MAJOR doesn't match ('%s')\n", buf );
@@ -630,6 +683,7 @@ int mainRadiant( int argc, char* argv[] ) {
 		Sys_FPrintf( SYS_ERR, "ERROR: can't find RADIANT_MAJOR in '%s'\n", ver_file_name.GetBuffer() );
 		bVerIsGood = false;
 	}
+
 	ver_file_name = g_strAppPath;
 	ver_file_name += "RADIANT_MINOR";
 	ver_file = fopen( ver_file_name.GetBuffer(), "r" );
@@ -639,8 +693,10 @@ int mainRadiant( int argc, char* argv[] ) {
 		fread( buf, 1, 10, ver_file );
 		// chomp it (the hard way)
 		chomp = 0;
-		while ( buf[chomp] >= '0' && buf[chomp] <= '9' )
+		while ( buf[chomp] >= '0' && buf[chomp] <= '9' ) {
 			chomp++;
+		}
+
 		buf[chomp] = '\0';
 		if ( strcmp( buf, RADIANT_MINOR_VERSION ) ) {
 			Sys_FPrintf( SYS_ERR, "ERROR: file RADIANT_MINOR doesn't match ('%s')\n", buf );
@@ -652,6 +708,7 @@ int mainRadiant( int argc, char* argv[] ) {
 		Sys_FPrintf( SYS_ERR, "ERROR: can't find RADIANT_MINOR in '%s'\n", ver_file_name.GetBuffer() );
 		bVerIsGood = false;
 	}
+
 	if ( !bVerIsGood ) {
 		CString msg;
 		msg = "This editor binary (" RADIANT_VERSION ") doesn't match what the latest setup has configured in this directory\n";
@@ -708,6 +765,7 @@ int mainRadiant( int argc, char* argv[] ) {
 			gtk_MessageBox( NULL, _( "Cleaned registry settings, choose OK to close Radiant.\nThe next time Radiant runs it will use default settings." ), _( "Radiant" ), MB_OK );
 			_exit( -1 );
 		}
+
 		msg = _( "Logging console output to " );
 		msg += g_strTempPath;
 		msg += _( "radiant.log\nRefer to the log if Radiant fails to start again." );
@@ -763,6 +821,7 @@ int mainRadiant( int argc, char* argv[] ) {
 			pBuffer[i] = '\\';
 		}
 	}
+
 	// check the file exists
 	if ( access( sRCFile.GetBuffer(), R_OK ) != 0 ) {
 		Sys_Printf( "RC file %s not found\n", sRCFile.GetBuffer() );
@@ -938,6 +997,7 @@ void QE_ExpandBspString( char *bspaction, GPtrArray *out_array, char *mapname ){
 			if ( *out == '\\' ) {
 				*out = '/';
 			}
+
 			out++;
 		}
 	}
@@ -982,6 +1042,7 @@ void QE_ExpandBspString( char *bspaction, GPtrArray *out_array, char *mapname ){
 			in++;
 			continue;
 		}
+
 		if ( in[0] == '#' ) {
 			char tmp[2048];
 			// we process these only if monitoring
@@ -991,9 +1052,11 @@ void QE_ExpandBspString( char *bspaction, GPtrArray *out_array, char *mapname ){
 				strcpy( out, tmp );
 				out += strlen( tmp );
 			}
+
 			in++;
 			continue;
 		}
+
 		if ( in[0] == '$' ) {
 			// $ expansion
 			strcpy( out, src );
@@ -1001,11 +1064,13 @@ void QE_ExpandBspString( char *bspaction, GPtrArray *out_array, char *mapname ){
 			in++;
 			continue;
 		}
+
 		if ( in[0] == '@' ) {
 			*out++ = '"';
 			in++;
 			continue;
 		}
+
 		if ( in[0] == '&' ) {
 			if ( in[1] == '&' ) {
 				// start a new step
@@ -1015,8 +1080,10 @@ void QE_ExpandBspString( char *bspaction, GPtrArray *out_array, char *mapname ){
 				g_ptr_array_add( out_array, out );
 			}
 		}
+
 		*out++ = *in++;
 	}
+
 	*out = 0;
 }
 
@@ -1024,6 +1091,7 @@ void FindReplace( CString& strContents, const char* pTag, const char* pValue ){
 	if ( strcmp( pTag, pValue ) == 0 ) {
 		return;
 	}
+
 	for ( int nPos = strContents.Find( pTag ); nPos >= 0; nPos = strContents.Find( pTag ) )
 	{
 		int nRightLen = strContents.GetLength() - strlen( pTag ) - nPos;
@@ -1148,6 +1216,7 @@ void RunBsp( char *command ){
 			Sys_Printf( "\n%s\n", (char *)g_ptr_array_index( sys, i ) );
 			strSys += "\nIF %ERRORLEVEL% NEQ 0 goto error\n";
 		}
+
 		strSys += "\
 goto end\n\
 \n\
@@ -1172,6 +1241,7 @@ pause\n\
 		if ( !hFile ) {
 			Error( "Can't write to %s", batpath );
 		}
+
 		fprintf( hFile, "#!/bin/sh \n\n" );
 		fprintf( hFile, "%s", strSys.GetBuffer() );
 		fclose( hFile );
@@ -1185,6 +1255,7 @@ pause\n\
 		if ( !hFile ) {
 			Error( "Can't write to %s", batpath );
 		}
+
 		fprintf( hFile, "%s", strSys.GetBuffer() );
 		fclose( hFile );
 #endif
@@ -1229,10 +1300,12 @@ pause\n\
 		Q_Exec( batpath, NULL, g_strTempPath.GetBuffer(), true );
 #endif
 	}
+
   // free the strings and the array
   for ( i = 0; i < sys->len; i++ ) {
 		delete[](char*)g_ptr_array_index( sys, i );
   }
+
   g_ptr_array_free( sys, TRUE );
   sys = NULL;
 }

@@ -1,5 +1,32 @@
+/*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: nod_models.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
 #include "nodmodel.h"
 #include "NMBParser.h"
+#include "../radiant/nodmodelreference.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -135,7 +162,68 @@ static void synthetic(){
 		data.pop_back();
 		check( !load( "test.nmb", 0, data, error ), "incomplete NMB is not a partial success" );
 	}
-	std::puts( "Native model conversion regressions passed" );
+	Bytes bundle( 12, 0 );
+	put32( bundle, 0, 2 ); put32( bundle, 4, 2 );
+	const size_t first = bundle.size();
+	bundleEntry( bundle, true, 100 );
+	const size_t second = bundle.size();
+	bundleEntry( bundle, true, 200 );
+	auto rename = [&]( size_t offset, const char *name ){
+		std::memset( bundle.data() + offset + 5, 0, 32 );
+		std::memcpy( bundle.data() + offset + 5, name, std::strlen( name ) );
+	};
+	rename( first, "first.nod" ); rename( second, "second.nod" );
+	std::map<std::string, Bytes> files = {
+		{ "3D/Models/mission.nmb", bundle }, { "3D/Models/second.NOD", nod( 0 ) }
+	};
+	unsigned reads = 0;
+	NodModelSource source;
+	source.assets = [&]( std::vector<std::string> &assets, std::string & ){
+		for ( const auto &file : files ) assets.push_back( file.first ); return true;
+	};
+	source.load = [&]( const std::string &path, Bytes &bytes, std::string &issue ){
+		++reads;
+		auto file = files.find( path );
+		if ( file == files.end() ) { issue = "Missing fixture"; return false; }
+		bytes = file->second; return true;
+	};
+	source.identity = []( const std::string &path ){ return path; };
+	NodModelReferences resolver;
+	std::vector<NodModelResource> catalog;
+	check( resolver.catalog( "MISSION.NMB", source, catalog, error ) && catalog.size() == 3, "catalog contains both bundle members and standalone file" );
+	check( catalog[0].reference == "first.nod" && catalog[0].frame == 0 &&
+		catalog[1].reference == "second.nod" && catalog[1].frame == 1 &&
+		catalog[1].asset == "3D/Models/mission.nmb", "catalog preserves exact native member names and frames" );
+	check( resolver.catalog( "", source, catalog, error ) && catalog.size() == 2, "standalone catalog requires no implicit bundle" );
+	check( !resolver.catalog( "missing.nmb", source, catalog, error ) && catalog.empty() && !error.empty(), "failed catalog has no partial success" );
+	check( !resolver.catalog( "../mission.nmb", source, catalog, error ) && catalog.empty(), "catalog validates the per-map bundle" );
+	auto reference = [&]( const char *name, const char *selected ){
+		return Model( resolver.load( NodModelReference_Request( name, selected ), source, error ), PicoFreeModel );
+	};
+	auto standalone = reference( "SECOND", "" );
+	check( bool( standalone ), error.c_str() );
+	check( PicoGetSurfaceXYZ( PicoGetModelSurface( standalone.get(), 0 ), 0 )[0] == 11, "extensionless, case-insensitive standalone reference" );
+	auto selected = reference( "SeCoNd.NoD", "MISSION.NMB" );
+	check( bool( selected ), error.c_str() );
+	check( PicoGetModelFrameNum( selected.get() ) == 1 &&
+		PicoGetSurfaceXYZ( PicoGetModelSurface( selected.get(), 0 ), 0 )[0] == 200, "explicit bundle member takes precedence over different standalone geometry" );
+	const unsigned loaded = reads;
+	check( bool( reference( "3d/models/first", "mission.nmb" ) ) && reads == loaded, "bundle parse reused across references" );
+	check( !reference( "mission.nmb", "" ) && !error.empty(), "no arbitrary frame-zero selection for a bare multi-entry bundle" );
+	check( !reference( "second", "missing.nmb" ) && !error.empty(), "missing explicit bundle never falls back silently" );
+	check( !reference( "../second", "" ) && !error.empty(), "unsafe references rejected" );
+	files["3D/Models/nested/second.nod"] = nod( 0 );
+	check( !reference( "second", "" ) && !error.empty(), "ambiguous flat standalone references rejected" );
+	rename( first, "second.nod" );
+	files["3D/Models/mission.nmb"] = bundle;
+	resolver.clear();
+	check( !reference( "second", "mission.nmb" ) && !error.empty(), "duplicate bundle members rejected" );
+	files["3D/Models/mission.nmb"].resize( 20 );
+	resolver.clear();
+	check( !resolver.catalog( "mission.nmb", source, catalog, error ) && catalog.empty() && !error.empty(), "corrupt catalog cannot become standalone fallback" );
+	check( !reference( "second", "mission.nmb" ) && !error.empty(), "corrupt selected bundle never becomes standalone success" );
+	check( !NodModelReference_Bundle( "../mission.nmb" ) && !NodModelReference_Bundle( "mission.nod" ), "bundle identity validation" );
+	std::puts( "Native model conversion and per-map reference resolution regressions passed" );
 }
 
 static bool convertFile( const std::filesystem::path &path, unsigned &converted, unsigned &empty ){
@@ -174,6 +262,52 @@ int main( int argc, char **argv ){
 	PicoSetFreeFunc( std::free );
 	if ( argc == 1 ) {
 		synthetic();
+		return 0;
+	}
+	if ( ( argc == 5 && std::strcmp( argv[1], "--reference" ) == 0 ) ||
+		( argc == 4 && std::strcmp( argv[1], "--bundle-references" ) == 0 ) ) {
+		const std::filesystem::path root( argv[2] );
+		NodModelSource source;
+		source.assets = [&]( std::vector<std::string> &assets, std::string & ){
+			for ( const char *directory : { "Models", "Terrains" } ) {
+				const auto path = root / "3D" / directory;
+				if ( !std::filesystem::exists( path ) ) continue;
+				for ( const auto &entry : std::filesystem::recursive_directory_iterator( path ) )
+					if ( entry.is_regular_file() && NodModelIsSupported( entry.path().string().c_str() ) )
+						assets.push_back( std::filesystem::relative( entry.path(), root ).generic_string() );
+			}
+			return true;
+		};
+		source.load = [&]( const std::string &path, Bytes &bytes, std::string &issue ){
+			std::ifstream stream( root / std::filesystem::u8path( path ), std::ios::binary );
+			if ( !stream ) { issue = "Cannot read reference asset"; return false; }
+			bytes.assign( std::istreambuf_iterator<char>( stream ), std::istreambuf_iterator<char>() );
+			return !stream.bad();
+		};
+		source.identity = [&]( const std::string &path ){ return ( root / std::filesystem::u8path( path ) ).string(); };
+		NodModelReferences resolver;
+		std::string error;
+		if ( argc == 4 ) {
+			Bytes bytes;
+			check( source.load( std::string( "3D/Models/" ) + argv[3], bytes, error ), error.c_str() );
+			auto parser = std::make_unique<NMBParser>();
+			check( parser->parseBuffer( bytes.data(), bytes.size() ) != 0, parser->getLastError().c_str() );
+			const auto &bundle = parser->getBundleData();
+			unsigned rendered = 0, empty = 0;
+			for ( uint32_t frame = 0; frame < bundle.parsed_count; ++frame ) {
+				Model model( resolver.load( NodModelReference_Request( bundle.models[frame].name, argv[3] ), source, error ), PicoFreeModel );
+				if ( !model && error == "Selected native model has no LOD-0 triangles" ) { ++empty; continue; }
+				check( bool( model ), error.c_str() );
+				check( PicoGetModelFrameNum( model.get() ) == static_cast<int>( frame ), "exact original bundle member identity" );
+				++rendered;
+			}
+			std::printf( "Original bundle references: %u rendered, %u empty, %u verified members\n", rendered, empty, bundle.parsed_count );
+			return 0;
+		}
+		Model model( resolver.load( NodModelReference_Request( argv[4], std::strcmp( argv[3], "-" ) ? argv[3] : "" ), source, error ), PicoFreeModel );
+		check( bool( model ), error.c_str() );
+		std::printf( "Native reference resolved: %s, frame %d, %d surfaces\n",
+			PicoGetModelFileName( model.get() ), PicoGetModelFrameNum( model.get() ), PicoGetModelNumSurfaces( model.get() ) );
 		return 0;
 	}
 	unsigned files = 0, converted = 0, empty = 0, failures = 0;

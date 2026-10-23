@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: entity.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -22,6 +48,8 @@
 #include "plugin.h"
 #include "entity.h"
 #include "entity_entitymodel.h"
+#include "../../radiant/modeltransform.h"
+#include "../../radiant/nodclass.h"
 #include "light.h"
 
 int g_entityId = 1;
@@ -59,8 +87,9 @@ entity_t *Entity_Alloc(){
 
 // destructor
 void Entity_Free( entity_t *e ){
-	while ( e->brushes.onext != &e->brushes )
+	while ( e->brushes.onext != &e->brushes ) {
 		Brush_Free( e->brushes.onext, true );
+	}
 
 	if ( e->next ) {
 		e->next->prev = e->prev;
@@ -73,10 +102,12 @@ void Entity_Free( entity_t *e ){
 		e->model.pRender->DecRef();
 		e->model.pRender = NULL;
 	}
+
 	if ( e->model.pSelect ) {
 		e->model.pSelect->DecRef();
 		e->model.pSelect = NULL;
 	}
+
 	if ( e->model.pEdit ) {
 		e->model.pEdit->DecRef();
 		e->model.pEdit = NULL;
@@ -131,6 +162,7 @@ const char *ValueForKey( epair_t *&e, const char *key ){
 			return ep->value;
 		}
 	}
+
 	return "";
 }
 
@@ -149,6 +181,7 @@ void    SetKeyValue( epair_t *&e, const char *key, const char *value ){
 			return;
 		}
 	}
+
 	ep = (epair_t*)malloc( sizeof( *ep ) );
 	ep->next = e;
 	e = ep;
@@ -191,6 +224,7 @@ void    DeleteKey( epair_t *&e, const char *key ){
 			free( next );
 			return;
 		}
+
 		ep = &next->next;
 	}
 }
@@ -238,6 +272,7 @@ void Entity_FreeEpairs( entity_t *e ){
 		free( ep->value );
 		free( ep );
 	}
+
 	e->epairs = NULL;
 }
 
@@ -245,6 +280,7 @@ void Entity_AddToList( entity_t *e, entity_t *elist ){
 	if ( e->next || e->prev ) {
 		Error( "Entity_AddToList: already linked" );
 	}
+
 	//e->next = elist->next;
 	//elist->next->prev = e;
 	//elist->next = e;
@@ -259,6 +295,7 @@ void Entity_RemoveFromList( entity_t *e ){
 	if ( !e->next || !e->prev ) {
 		Error( "Entity_RemoveFromList: not linked" );
 	}
+
 	e->next->prev = e->prev;
 	e->prev->next = e->next;
 	e->next = e->prev = NULL;
@@ -268,6 +305,7 @@ void Entity_LinkBrush( entity_t *e, brush_t *b ){
 	if ( b->oprev || b->onext ) {
 		Error( "Entity_LinkBrush: Already linked" );
 	}
+
 	b->owner = e;
 
 //	b->onext = e->brushes.onext;
@@ -289,6 +327,7 @@ void Entity_UnlinkBrush( brush_t *b ){
 	if ( !b->onext || !b->oprev ) {
 		Error( "Entity_UnlinkBrush: Not currently linked" );
 	}
+
 	b->onext->oprev = b->oprev;
 	b->oprev->onext = b->onext;
 	b->onext = b->oprev = NULL;
@@ -306,6 +345,7 @@ int Entity_MemorySize( entity_t *e ){
 		size += strlen( ep->value );
 		size += sizeof( epair_t );
 	}
+
 	size += sizeof( entity_t );
 	return size;
 }
@@ -331,30 +371,44 @@ void Entity_SetKeyValList( entity_t *e, epair_t* ep ){
 	else {
 		e->epairs = ep;
 
-		for ( epair_t *pe_ep = e->epairs; pe_ep; pe_ep = pe_ep->next )
+		for ( epair_t *pe_ep = e->epairs; pe_ep; pe_ep = pe_ep->next ) {
 			Entity_OnKeyValueChanged( e, pe_ep->key, pe_ep->value );
 	}
 }
-
+}
 
 /*!
    \todo FIXME TTimo
    this is meant to raise messages instead of calling the IEdit directly
  */
 static void Entity_OnKeyValueChanged( entity_t *e, const char *key, const char* value ){
-	if ( strcmp( key,"classname" ) == 0 ) {
-		e->eclass = Eclass_ForName( value, false );
-		Entity_UpdateClass( e, value );
-		if ( strcmp( value,"light" ) == 0 ) {
-			for ( epair_t* ep = e->epairs; ep != NULL; ep = ep->next )
+	if ( strcmp( key, "nod_model_bundle" ) == 0 && e == g_FuncTable.m_pfnGetEntityHandle( 0 ) ) {
+		const int count = g_FuncTable.m_pfnGetEntityCount();
+		for ( int i = 1; i < count; ++i ) {
+			entity_t *entity = static_cast<entity_t *>( g_FuncTable.m_pfnGetEntityHandle( i ) );
+			if ( entity->model.pEdit ) {
+				entity->model.pEdit->OnKeyValueChanged( entity, key, value );
+		}
+	}
+	}
+
+	const char *classname = ValueForKey( e, "classname" );
+	if ( strcmp( key,"classname" ) == 0 ||
+		 ( strcmp( key, "model" ) == 0 && ModelTransform_IsNativeEntity( classname ) ) ) {
+		e->eclass = Eclass_ForName( classname, false );
+		Entity_UpdateClass( e, classname );
+		if ( strcmp( classname,"light" ) == 0 && !NodClass_Registered( e->eclass->comments ) ) {
+			for ( epair_t* ep = e->epairs; ep != NULL; ep = ep->next ) {
 				Light_OnKeyValueChanged( e, ep->key, ep->value );
 		}
+		}
+
 		if ( e->model.pEdit ) {
-			for ( epair_t* ep = e->epairs; ep != NULL; ep = ep->next )
+			for ( epair_t* ep = e->epairs; ep != NULL; ep = ep->next ) {
 				e->model.pEdit->OnKeyValueChanged( e, ep->key, ep->value );
 		}
 	}
-	else if ( Entity_IsLight( e ) ) {
+	} else if ( Entity_IsLight( e ) ) {
 		Light_OnKeyValueChanged( e, key, value );
 	}
 	else if ( e->model.pEdit ) {

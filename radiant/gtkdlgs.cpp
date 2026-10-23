@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: gtkdlgs.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (c) 2001, Loki software, inc.
    All rights reserved.
 
@@ -38,6 +64,12 @@
 #include <gdk/gdkkeysyms.h>
 #include <gtk/gtk.h>
 #include <glib/gi18n.h>
+#include "nodproject.h"
+#include "nodview.h"
+#include "nodcompile.h"
+#include "nodexportdialog.h"
+#include <thread>
+#include <mutex>
 
 #ifdef _WIN32
 #include <gdk/gdkwin32.h>
@@ -73,9 +105,11 @@ qboolean DoColor( int iIndex ){
 			if ( g_qeglobals.d_savedinfo.colors[iIndex][0] > largest ) {
 				largest = g_qeglobals.d_savedinfo.colors[iIndex][0];
 			}
+
 			if ( g_qeglobals.d_savedinfo.colors[iIndex][1] > largest ) {
 				largest = g_qeglobals.d_savedinfo.colors[iIndex][1];
 			}
+
 			if ( g_qeglobals.d_savedinfo.colors[iIndex][2] > largest ) {
 				largest = g_qeglobals.d_savedinfo.colors[iIndex][2];
 			}
@@ -122,6 +156,7 @@ static void DoProjectAddEdit( bool edit, GtkWidget *parent ){
 	else{
 		dialog = gtk_dialog_new_with_buttons( _( "Add Command" ), NULL, flags, NULL, NULL );
 	}
+
 	gtk_window_set_transient_for( GTK_WINDOW( dialog ), GTK_WINDOW( parent ) );
 
 	gtk_dialog_add_button( GTK_DIALOG( dialog ), _( "OK" ), GTK_RESPONSE_OK );
@@ -399,6 +434,7 @@ GList *newMappingModesListForGameFile( Str & mGameFile ){
 			mode_list = g_list_append( mode_list, &gameModeList[x] );
 		}
 	}
+
 	return mode_list;
 }
 
@@ -413,6 +449,7 @@ GList *newModListForGameFile( Str & mGameFile ){
 			mod_list = g_list_append( mod_list, &gameList[x] );
 		}
 	}
+
 	return mod_list;
 }
 
@@ -456,6 +493,7 @@ void OnSelchangeComboWhatgame( GtkWidget *widget, gpointer data ){
 				gtk_entry_set_text( GTK_ENTRY( fs_game_entry ), gameList[x].fs_game );
 				gtk_widget_set_sensitive( GTK_WIDGET( fs_game_entry ), false );
 			}
+
 			break;
 		}
 	}
@@ -467,7 +505,873 @@ void OnSelchangeComboWhatgame( GtkWidget *widget, gpointer data ){
 
 }
 
+/*
+ */
+struct NodViewWidgets
+{
+	GtkWidget *dialog, *tree, *name, *status;
+	GtkListStore *store;
+	GtkWidget *categories[NOD_VIEW_CATEGORY_COUNT];
+	GtkWidget *options[6];
+	bool syncing;
+};
+
+/*
+ */
+static NodViewWidgets nodView;
+
+/*
+ */
+static int NodView_CurrentLayer(){
+	GtkTreeIter iter;
+	GtkTreeModel *model;
+	if ( !gtk_tree_selection_get_selected( gtk_tree_view_get_selection( GTK_TREE_VIEW( nodView.tree ) ), &model, &iter ) ) {
+		return -2;
+	}
+
+	int layer;
+	gtk_tree_model_get( model, &iter, 0, &layer, -1 );
+	return layer;
+}
+
+/*
+ */
+static void NodView_CollectOwner( entity_t *owner, std::set<int> &ids, bool &world ){
+	if ( !owner ) {
+		return;
+	}
+
+	if ( owner == world_entity ) {
+		world = true;
+	} else {
+		ids.insert( owner->entityId );
+}
+}
+
+/*
+ */
+static std::set<int> NodView_Selection( bool &world ){
+	std::set<int> ids;
+	world = false;
+
+	for ( brush_t *b = selected_brushes.next; b != &selected_brushes; b = b->next ) {
+		NodView_CollectOwner( b->owner, ids, world );
+	}
+	
+	for ( int i = 0; i < g_ptrSelectedFaceBrushes.GetSize(); ++i ) {
+		NodView_CollectOwner( static_cast<brush_t *>( g_ptrSelectedFaceBrushes.GetAt( i ) )->owner, ids, world );
+	}
+	
+	return ids;
+}
+
+/*
+ */
+static bool NodView_OptionValue( int option ){
+	switch ( option ) {
+		case 0: return g_qeglobals.d_savedinfo.show_names != 0;
+		case 1: return g_qeglobals.d_savedinfo.show_angles != 0;
+		case 2: return g_qeglobals.d_savedinfo.show_coordinates != 0;
+		case 3: return g_qeglobals.d_savedinfo.show_outline != 0;
+		case 4: return g_qeglobals.d_savedinfo.show_axis != 0;
+		default: return g_qeglobals.d_show_work != 0;
+	}
+}
+
+/*
+ */
+static void NodView_LayerSelected( GtkTreeSelection *, gpointer ){
+	if ( !nodView.dialog || nodView.syncing ) {
+		return;
+	}
+
+	const int layer = NodView_CurrentLayer();
+	gtk_entry_set_text( GTK_ENTRY( nodView.name ), layer >= 0 ? g_nodViewState.names[layer].c_str() : _( "Static" ) );
+	gtk_widget_set_sensitive( nodView.name, layer >= 0 );
+}
+
+/*
+ */
+
+static void NodView_Refresh( GtkWidget *, gpointer ){
+	if ( !nodView.dialog ) {
+		return;
+	}
+	
+	const int current = NodView_CurrentLayer();
+	nodView.syncing = true;
+	gtk_list_store_clear( nodView.store );
+	
+	for ( int layer = -1; layer < 32; ++layer ) {
+		GtkTreeIter iter;
+		gtk_list_store_append( nodView.store, &iter );
+		const bool visible = layer == -1 ? g_nodViewState.showStatic
+			: ( g_nodViewState.visibleLayers & ( uint32_t( 1 ) << layer ) ) != 0;
+		gtk_list_store_set( nodView.store, &iter, 0, layer, 1, visible,
+			2, layer == -1 ? _( "Static" ) : g_nodViewState.names[layer].c_str(), -1 );
+		if ( layer == ( current < -1 ? -1 : current ) ) {
+			gtk_tree_selection_select_iter( gtk_tree_view_get_selection( GTK_TREE_VIEW( nodView.tree ) ), &iter );
+	}
+	}
+
+	for ( int i = 0; i < NOD_VIEW_CATEGORY_COUNT; ++i ) {
+		gtk_toggle_button_set_active( GTK_TOGGLE_BUTTON( nodView.categories[i] ), g_nodViewState.categories[i] );
+	}
+
+	for ( int i = 0; i < 6; ++i ) {
+		gtk_toggle_button_set_active( GTK_TOGGLE_BUTTON( nodView.options[i] ), NodView_OptionValue( i ) );
+	}
+
+	bool world;
+	const std::set<int> ids = NodView_Selection( world );
+
+	char text[160];
+	g_snprintf( text, sizeof( text ), _( "%u selected entities%s. Membership applies to whole entities." ),
+				static_cast<unsigned>( ids.size() ), world ? _( " plus world brushes (not assignable)" ) : "" );
+	gtk_label_set_text( GTK_LABEL( nodView.status ), text );
+
+	nodView.syncing = false;
+	NodView_LayerSelected( NULL, NULL );
+}
+
+/*
+ */
+static void NodView_ApplyVisibility(){
+
+	extern void PerformFiltering();
+
+	PerformFiltering();
+	bool hiddenSelection = false;
+
+	for ( brush_t *b = selected_brushes.next; b != &selected_brushes; b = b->next ) {
+		if ( b->bFiltered ) {
+			hiddenSelection = true;
+		}
+	}
+
+	for ( int i = 0; i < g_ptrSelectedFaceBrushes.GetSize(); ++i ) {
+		if ( static_cast<brush_t *>( g_ptrSelectedFaceBrushes.GetAt( i ) )->bFiltered )  {
+			hiddenSelection = true;
+		}
+	}
+
+	if ( hiddenSelection ) {
+		Select_Deselect();
+	}
+
+	Sys_UpdateWindows( W_ALL );
+	NodView_Refresh( NULL, NULL );
+}
+
+/*
+ */
+static void NodView_Error( const char *message ){
+	Sys_FPrintf( SYS_WRN, "NOD layers: %s\n", message );
+	gtk_MessageBox( nodView.dialog, message, _( "NOD Layers and View Options" ), MB_OK | MB_ICONWARNING );
+}
+
+/*
+ */
+static void NodView_VisibilityToggled( GtkCellRendererToggle *, gchar *path, gpointer ){
+	
+	GtkTreeIter iter;
+	if ( !gtk_tree_model_get_iter_from_string( GTK_TREE_MODEL( nodView.store ), &iter, path ) ) {
+		NodView_Error( _( "The selected layer row is no longer available. Refresh the panel." ) );
+		return;
+	}
+	
+	int layer;
+	gtk_tree_model_get( GTK_TREE_MODEL( nodView.store ), &iter, 0, &layer, -1 );
+	
+	if ( layer == -1 ) {
+		g_nodViewState.showStatic = !g_nodViewState.showStatic;
+	} else { 
+		g_nodViewState.visibleLayers ^= uint32_t( 1 ) << layer; 
+	}
+
+	Sys_MarkMapModified();
+	NodView_ApplyVisibility();
+}
+
+/*
+ */
+static void NodView_Assign( GtkWidget *, gpointer data ){
+	
+	bool world;
+	const std::set<int> ids = NodView_Selection( world );
+	if ( world ) {
+		NodView_Error( _( "World brushes stay in Static. Deselect them before assigning entity layers." ) );
+		return;
+	}
+
+	const char *error = g_nodViewState.Assign( ids, NodView_CurrentLayer(), GPOINTER_TO_INT( data ) != 0 );
+	if ( error ) {
+		NodView_Error( error );
+		return;
+	}
+	
+	Sys_MarkMapModified();
+	NodView_ApplyVisibility();
+}
+
+/*
+ */
+static void NodView_Rename( GtkWidget *, gpointer ){
+	const char *error = g_nodViewState.Rename( NodView_CurrentLayer(), gtk_entry_get_text( GTK_ENTRY( nodView.name ) ) );
+	if ( error ) { 
+		NodView_Error( error );
+	} else {
+		Sys_MarkMapModified();
+		NodView_Refresh( NULL, NULL );
+	}
+}
+
+/*
+ */
+static void NodView_UndoRedo( GtkWidget *, gpointer data ){
+	if ( GPOINTER_TO_INT( data ) ? g_nodViewState.Redo() : g_nodViewState.Undo() ) {
+		Sys_MarkMapModified();
+		NodView_ApplyVisibility();
+	}
+}
+
+/*
+ */
+static void NodView_ShowAll( GtkWidget *, gpointer ){
+	g_nodViewState.ShowAll();
+	Sys_MarkMapModified();
+	NodView_ApplyVisibility();
+}
+
+/*
+ */
+static void NodView_CategoryToggled( GtkToggleButton *button, gpointer data ){
+	if ( nodView.syncing ) {
+		return;
+	}
+
+	g_nodViewState.categories[GPOINTER_TO_INT( data )] = gtk_toggle_button_get_active( button ) != FALSE;
+	Sys_MarkMapModified();
+	NodView_ApplyVisibility();
+}
+
+/*
+ */
+static void NodView_OptionToggled( GtkToggleButton *button, gpointer data ){
+	if ( nodView.syncing ) {
+		return;
+	}
+
+	const int option = GPOINTER_TO_INT( data );
+	if ( ( gtk_toggle_button_get_active( button ) != FALSE ) == NodView_OptionValue( option ) ) {
+		return;
+	}
+
+	typedef void (MainFrame::*ViewCommand)();
+	const ViewCommand commands[] = { &MainFrame::OnViewShownames, &MainFrame::OnViewShowAngles,
+		&MainFrame::OnViewShowcoordinates, &MainFrame::OnViewShowOutline,
+		&MainFrame::OnViewShowAxes, &MainFrame::OnViewShowWorkzone };
+
+	( g_pParentWnd->*commands[option] )();
+}
+
+/*
+ */
+static gboolean NodView_Focused( GtkWidget *, GdkEventFocus *, gpointer ){
+	NodView_Refresh( NULL, NULL );
+	return FALSE;
+}
+
+/*
+ */
+static void NodView_Destroyed( GtkWidget *, gpointer ){
+	nodView = NodViewWidgets();
+}
+
+/*
+ */
+static void NodView_Response( GtkDialog *dialog, gint, gpointer ){
+	gtk_widget_destroy( GTK_WIDGET( dialog ) );
+}
+
+/*
+ */
+void DoNodViewOptions(){
+	if ( g_pGameDescription->mGameFile != SCGHOST_GAME ) { 
+		return; 
+	}
+	
+	if ( nodView.dialog ) {
+		NodView_Refresh( NULL, NULL );
+		gtk_window_present( GTK_WINDOW( nodView.dialog ) );
+		return;
+	}
+	
+	nodView.dialog = gtk_dialog_new_with_buttons( _( "NOD Layers and View Options" ),
+		GTK_WINDOW( g_pParentWnd->m_pWidget ), GTK_DIALOG_DESTROY_WITH_PARENT,
+		_( "Close" ), GTK_RESPONSE_CLOSE, NULL );
+	
+	gtk_window_set_default_size( GTK_WINDOW( nodView.dialog ), 620, 540 );
+
+	GtkWidget *box = gtk_vbox_new( FALSE, 6 );
+	gtk_container_set_border_width( GTK_CONTAINER( box ), 8 );
+	gtk_container_add( GTK_CONTAINER( gtk_dialog_get_content_area( GTK_DIALOG( nodView.dialog ) ) ), box );
+
+	GtkWidget *note = gtk_label_new( _( "Layers use .nodeditor.xml, not entity keys. Default: Static.\n"
+		"Layer Undo/Redo is separate from map Undo." ) );
+	gtk_misc_set_alignment( GTK_MISC( note ), 0, 0.5 );
+	gtk_box_pack_start( GTK_BOX( box ), note, FALSE, FALSE, 0 );
+
+	GtkWidget *notebook = gtk_notebook_new();
+	gtk_box_pack_start( GTK_BOX( box ), notebook, TRUE, TRUE, 0 );
+	
+	GtkWidget *layers = gtk_vbox_new( FALSE, 5 );
+	gtk_notebook_append_page( GTK_NOTEBOOK( notebook ), layers, gtk_label_new( _( "Layers" ) ) );
+	nodView.store = gtk_list_store_new( 3, G_TYPE_INT, G_TYPE_BOOLEAN, G_TYPE_STRING );
+	nodView.tree = gtk_tree_view_new_with_model( GTK_TREE_MODEL( nodView.store ) );
+	g_object_unref( nodView.store );
+	
+	GtkCellRenderer *toggle = gtk_cell_renderer_toggle_new();
+	gtk_tree_view_append_column( GTK_TREE_VIEW( nodView.tree ),
+		gtk_tree_view_column_new_with_attributes( _( "Visible" ), toggle, "active", 1, NULL ) );
+	gtk_tree_view_append_column( GTK_TREE_VIEW( nodView.tree ),
+		gtk_tree_view_column_new_with_attributes( _( "Working layer" ), gtk_cell_renderer_text_new(), "text", 2, NULL ) );
+	
+	GtkWidget *scroll = gtk_scrolled_window_new( NULL, NULL );
+	gtk_scrolled_window_set_policy( GTK_SCROLLED_WINDOW( scroll ), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC );
+	gtk_container_add( GTK_CONTAINER( scroll ), nodView.tree );
+	gtk_box_pack_start( GTK_BOX( layers ), scroll, TRUE, TRUE, 0 );
+
+	nodView.name = gtk_entry_new();
+	gtk_entry_set_max_length( GTK_ENTRY( nodView.name ), 63 );
+	gtk_box_pack_start( GTK_BOX( layers ), nodView.name, FALSE, FALSE, 0 );
+	
+	GtkWidget *buttons = gtk_hbox_new( FALSE, 5 );
+	gtk_box_pack_start( GTK_BOX( layers ), buttons, FALSE, FALSE, 0 );
+	
+	GtkWidget *rename = gtk_button_new_with_label( _( "Rename layer" ) );
+	GtkWidget *move = gtk_button_new_with_label( _( "Move selection to layer" ) );
+	GtkWidget *add = gtk_button_new_with_label( _( "Add selection to layer" ) );
+
+	gtk_box_pack_start( GTK_BOX( buttons ), rename, FALSE, FALSE, 0 );
+	gtk_box_pack_start( GTK_BOX( buttons ), move, FALSE, FALSE, 0 );
+	gtk_box_pack_start( GTK_BOX( buttons ), add, FALSE, FALSE, 0 );
+
+	g_signal_connect( toggle, "toggled", G_CALLBACK( NodView_VisibilityToggled ), NULL );
+	g_signal_connect( gtk_tree_view_get_selection( GTK_TREE_VIEW( nodView.tree ) ), "changed",
+					  G_CALLBACK( NodView_LayerSelected ), NULL );
+	g_signal_connect( rename, "clicked", G_CALLBACK( NodView_Rename ), NULL );
+	g_signal_connect( move, "clicked", G_CALLBACK( NodView_Assign ), GINT_TO_POINTER( 0 ) );
+	g_signal_connect( add, "clicked", G_CALLBACK( NodView_Assign ), GINT_TO_POINTER( 1 ) );
+
+	buttons = gtk_hbox_new( FALSE, 5 );
+	gtk_box_pack_start( GTK_BOX( layers ), buttons, FALSE, FALSE, 0 );
+
+	GtkWidget *undo = gtk_button_new_with_label( _( "Undo layers" ) );
+	GtkWidget *redo = gtk_button_new_with_label( _( "Redo layers" ) );
+	gtk_box_pack_start( GTK_BOX( buttons ), undo, FALSE, FALSE, 0 );
+	gtk_box_pack_start( GTK_BOX( buttons ), redo, FALSE, FALSE, 0 );
+	g_signal_connect( undo, "clicked", G_CALLBACK( NodView_UndoRedo ), GINT_TO_POINTER( 0 ) );
+	g_signal_connect( redo, "clicked", G_CALLBACK( NodView_UndoRedo ), GINT_TO_POINTER( 1 ) );
+
+	GtkWidget *options = gtk_vbox_new( FALSE, 5 );
+	gtk_notebook_append_page( GTK_NOTEBOOK( notebook ), options, gtk_label_new( _( "View Options" ) ) );
+
+	const char *categoryNames[] = { 
+		_( "World geometry" ), _( "Models" ),
+		_( "Other entities" ), _( "Navigation markers" ), _( "Sector markers" ), _( "Source markers" ) 
+	};
+
+	for ( int i = 0; i < NOD_VIEW_CATEGORY_COUNT; ++i ) {
+		nodView.categories[i] = gtk_check_button_new_with_label( categoryNames[i] );
+		gtk_box_pack_start( GTK_BOX( options ), nodView.categories[i], FALSE, FALSE, 0 );
+		g_signal_connect( nodView.categories[i], "toggled", G_CALLBACK( NodView_CategoryToggled ), GINT_TO_POINTER( i ) );
+	}
+
+	gtk_box_pack_start( GTK_BOX( options ), gtk_hseparator_new(), FALSE, FALSE, 3 );
+	const char *optionNames[] = { 
+		_( "Entity names" ), _( "Entity angles" ), _( "Grid coordinates" ),
+		_( "2D outlines" ), _( "Axes" ), _( "Workzone" ) 
+	};
+	for ( int i = 0; i < 6; ++i ) {
+		nodView.options[i] = gtk_check_button_new_with_label( optionNames[i] );
+		gtk_box_pack_start( GTK_BOX( options ), nodView.options[i], FALSE, FALSE, 0 );
+		g_signal_connect( nodView.options[i], "toggled", G_CALLBACK( NodView_OptionToggled ), GINT_TO_POINTER( i ) );
+	}
+
+	note = gtk_label_new( _( "Layer visibility and Filters/Hide also apply.\n"
+		"Hiding selected objects deselects them." ) );
+	gtk_misc_set_alignment( GTK_MISC( note ), 0, 0.5 );
+	gtk_box_pack_start( GTK_BOX( options ), note, FALSE, FALSE, 3 );
+
+	nodView.status = gtk_label_new( "" );
+	gtk_misc_set_alignment( GTK_MISC( nodView.status ), 0, 0.5 );
+	gtk_box_pack_start( GTK_BOX( box ), nodView.status, FALSE, FALSE, 0 );
+
+	buttons = gtk_hbox_new( FALSE, 5 );
+	gtk_box_pack_start( GTK_BOX( box ), buttons, FALSE, FALSE, 0 );
+
+	GtkWidget *show = gtk_button_new_with_label( _( "Show all" ) );
+	GtkWidget *refresh = gtk_button_new_with_label( _( "Refresh selection" ) );
+	gtk_box_pack_start( GTK_BOX( buttons ), show, FALSE, FALSE, 0 );
+	gtk_box_pack_start( GTK_BOX( buttons ), refresh, FALSE, FALSE, 0 );
+
+	g_signal_connect( show, "clicked", G_CALLBACK( NodView_ShowAll ), NULL );
+	g_signal_connect( refresh, "clicked", G_CALLBACK( NodView_Refresh ), NULL );
+
+	g_signal_connect( nodView.dialog, "focus-in-event", G_CALLBACK( NodView_Focused ), NULL );
+	g_signal_connect( nodView.dialog, "response", G_CALLBACK( NodView_Response ), NULL );
+	g_signal_connect( nodView.dialog, "destroy", G_CALLBACK( NodView_Destroyed ), NULL );
+
+	NodView_Refresh( NULL, NULL );
+	gtk_widget_show_all( nodView.dialog );
+}
+
+/*
+ */
+static void NodProject_Browse( GtkWidget *widget, gpointer data ){
+	GtkWidget *entry = GTK_WIDGET( data );
+	char *directory = dir_dialog( gtk_widget_get_toplevel( widget ), _( "Select NOD directory" ),
+								  gtk_entry_get_text( GTK_ENTRY( entry ) ) );
+	if ( directory ) {
+		gtk_entry_set_text( GTK_ENTRY( entry ), directory );
+		g_free( directory );
+	}
+}
+
+/*
+ */
+static void NodNativeEditor_Exited( GPid pid, gint status, gpointer ){
+	g_spawn_close_pid( pid );
+	if ( status != 0 ) {
+		Sys_FPrintf( SYS_ERR, "NOD native editor exited with status %d\n", status );
+		gtk_MessageBox( g_pParentWnd->m_pWidget,
+			_( "The native editor exited with an error. See its diagnostics and the Radiant console." ),
+			_( "NOD native editor" ), MB_OK | MB_ICONERROR );
+	}
+}
+
+/*
+ */
+void DoNodNativeEditor( bool templates ){
+
+	if ( g_pGameDescription->mGameFile != SCGHOST_GAME ) {
+		return;
+	}
+	
+	Str directory = g_pGameDescription->mNodEditorsPath;
+	if ( !directory.GetLength() ) {
+		directory = g_strAppPath;
+		directory += "nod-editors";
+	}
+	
+	AddSlash( directory );
+	Str executable = directory;
+	executable += templates ? "NOTEditor" : "NSDEditor";
+#ifdef _WIN32
+	executable += ".exe";
+#endif
+
+	if ( !g_file_test( executable, G_FILE_TEST_IS_REGULAR ) ) {
+		const std::string message = std::string( "Editor not found:\n" ) + executable.GetBuffer()
+			+ "\nSet SDK editor binaries in File > Project Settings.";
+		Sys_FPrintf( SYS_ERR, "%s\n", message.c_str() );
+		gtk_MessageBox( g_pParentWnd->m_pWidget, message.c_str(), _( "NOD native editor" ), MB_OK | MB_ICONERROR );
+		return;
+	}
+
+	GtkWidget *chooser = gtk_file_chooser_dialog_new( templates ? _( "Open NOT archive" )
+		: _( "Open NSD scene" ), GTK_WINDOW( g_pParentWnd->m_pWidget ),
+		GTK_FILE_CHOOSER_ACTION_OPEN, _( "Open" ), GTK_RESPONSE_ACCEPT, _( "Cancel" ), GTK_RESPONSE_CANCEL, NULL );
+
+	GtkFileFilter *filter = gtk_file_filter_new();
+	gtk_file_filter_set_name( filter, templates ? "NOT archives" : "NSD scenes" );
+	gtk_file_filter_add_pattern( filter, templates ? "*.not" : "*.nsd" );
+	gtk_file_filter_add_pattern( filter, templates ? "*.NOT" : "*.NSD" );
+	gtk_file_chooser_add_filter( GTK_FILE_CHOOSER( chooser ), filter );
+
+	Str root = g_pGameDescription->mNodAssetPath.GetLength() ? g_pGameDescription->mNodAssetPath : g_pGameDescription->mEnginePath;
+	AddSlash( root );
+	root += templates ? "Misc/Templates" : "Levels";
+	gtk_file_chooser_set_current_folder( GTK_FILE_CHOOSER( chooser ), root );
+
+	gchar *source = gtk_dialog_run( GTK_DIALOG( chooser ) ) == GTK_RESPONSE_ACCEPT
+		? gtk_file_chooser_get_filename( GTK_FILE_CHOOSER( chooser ) ) : NULL;
+	gtk_widget_destroy( chooser );
+
+	if ( !source ) { 
+		return;
+	}
+
+	Str workspace = g_pGameDescription->mEnginePath;
+	AddSlash( workspace );
+	workspace += g_pGameDescription->mBaseGame;
+	gchar *args[7] = { NULL };
+
+	int count = 0;
+	args[count++] = g_strdup( executable.GetBuffer() );
+	args[count++] = g_strdup( "--workspace" );
+	args[count++] = g_strdup( workspace.GetBuffer() );
+	if ( g_pGameDescription->mNodAssetPath.GetLength() ) {
+		args[count++] = g_strdup( "--asset-root" );
+		args[count++] = g_strdup( g_pGameDescription->mNodAssetPath.GetBuffer() );
+	}
+
+	args[count++] = source;
+	
+	GError *failure = NULL;
+	GPid pid;
+	if ( !g_spawn_async( workspace, args, NULL, G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL, &pid, &failure ) ) {
+		std::string message = std::string( "Cannot launch:\n" ) + executable.GetBuffer() +
+			"\nWorking directory:\n" + workspace.GetBuffer() + "\n\n" +
+			( failure ? failure->message : "Cannot start the native editor." );
+#ifdef _WIN32
+		message += "\n\nHelper error? Restore the GLib spawn helpers beside libglib-2.0-0.dll.";
+#endif
+		Sys_FPrintf( SYS_ERR, "NOD native editor: %s\n", message.c_str() );
+		gtk_MessageBox( g_pParentWnd->m_pWidget, message.c_str(), _( "NOD native editor" ), MB_OK | MB_ICONERROR );
+		if ( failure )  {
+			g_error_free( failure );
+		}
+	} else  {
+		g_child_watch_add( pid, NodNativeEditor_Exited, NULL );
+	}
+
+	for ( int i = 0; i < count; ++i ) { 
+		g_free( args[i] );
+	}
+}
+
+/*
+ */
+static GtkWidget *NodProject_PathRow( GtkWidget *table, int row, const char *title,
+									const char *value, bool editable ){
+	GtkWidget *label = gtk_label_new( title );
+	gtk_misc_set_alignment( GTK_MISC( label ), 0.0, 0.5 );
+	gtk_table_attach( GTK_TABLE( table ), label, 0, 1, row, row + 1,
+					  GTK_FILL, (GtkAttachOptions)0, 0, 0 );
+
+	GtkWidget *box = gtk_hbox_new( FALSE, 5 );
+	gtk_table_attach( GTK_TABLE( table ), box, 1, 2, row, row + 1,
+					  (GtkAttachOptions)( GTK_EXPAND | GTK_FILL ), GTK_FILL, 0, 0 );
+
+	GtkWidget *entry = gtk_entry_new();
+	gtk_entry_set_text( GTK_ENTRY( entry ), value );
+	gtk_editable_set_editable( GTK_EDITABLE( entry ), editable );
+	gtk_box_pack_start( GTK_BOX( box ), entry, TRUE, TRUE, 0 );
+	
+	if ( editable ) {
+		GtkWidget *browse = gtk_button_new_with_label( _( "Browse..." ) );
+		gtk_box_pack_start( GTK_BOX( box ), browse, FALSE, FALSE, 0 );
+		g_signal_connect( browse, "clicked", G_CALLBACK( NodProject_Browse ), entry );
+	}
+
+	return entry;
+}
+
+/*
+ */
+struct NodConvertProgress {
+	std::mutex mutex;
+	std::string log, error;
+	bool done, ok;
+	GtkWidget *dialog, *view, *bar;
+	size_t displayed;
+	NodConvertProgress() : done( false ), ok( false ), dialog( NULL ), view( NULL ), bar( NULL ), displayed( 0 ) {}
+};
+
+static gboolean NodConvert_Progress( gpointer data ){
+	NodConvertProgress &progress = *static_cast<NodConvertProgress *>( data );
+	std::lock_guard<std::mutex> lock( progress.mutex );
+	if ( progress.displayed != progress.log.size() ) {
+		const std::string raw = progress.log.substr( progress.displayed );
+		std::string text;
+		const gchar *cursor = raw.c_str(), *invalid = NULL;
+		while ( !g_utf8_validate( cursor, -1, &invalid ) ) {
+			text.append( cursor, invalid - cursor );
+			gchar escaped[5];
+			g_snprintf( escaped, sizeof( escaped ), "\\x%02X", static_cast<unsigned char>( *invalid ) );
+			text += escaped;
+			cursor = invalid + 1;
+		}
+
+		text += cursor;
+		GtkTextBuffer *buffer = gtk_text_view_get_buffer( GTK_TEXT_VIEW( progress.view ) );
+		GtkTextIter end;
+		gtk_text_buffer_get_end_iter( buffer, &end );
+		gtk_text_buffer_insert( buffer, &end, text.c_str(), -1 );
+		gtk_text_view_scroll_to_iter( GTK_TEXT_VIEW( progress.view ), &end, 0.0, FALSE, 0.0, 0.0 );
+		progress.displayed = progress.log.size();
+	}
+
+	if ( !progress.done ) {
+		if ( progress.bar ) {
+			gtk_progress_bar_pulse( GTK_PROGRESS_BAR( progress.bar ) );
+		}
+
+		return TRUE;
+	}
+
+	if ( progress.bar ) {
+		gtk_progress_bar_set_fraction( GTK_PROGRESS_BAR( progress.bar ), progress.ok ? 1.0 : 0.0 );
+	}
+
+	gtk_dialog_response( GTK_DIALOG( progress.dialog ), 1001 );
+	return FALSE;
+}
+
+static gboolean NodConvert_Delete( GtkWidget *, GdkEvent *, gpointer data ){
+	return *static_cast<bool *>( data ) ? TRUE : FALSE;
+}
+
+void DoNodConvert(){
+	if ( g_pGameDescription->mGameFile != SCGHOST_GAME ) {
+		return;
+	}
+
+	const std::string workspace = NodCompile_Join( g_pGameDescription->mEnginePath.GetBuffer(),
+		g_pGameDescription->mBaseGame.GetBuffer() );
+	static NodCompileOptions remembered;
+	if ( remembered.workspace != workspace ) {
+		remembered = NodCompileOptions();
+		remembered.oversample = true;
+		remembered.phong = 89;
+		remembered.workspace = workspace;
+		remembered.assets = g_pGameDescription->mNodAssetPath.GetBuffer();
+		remembered.output = NodCompile_Join( workspace, "compiled/Levels" );
+		const std::string editors = g_pGameDescription->mNodEditorsPath.GetBuffer();
+		const std::string app = g_strAppPath.GetBuffer();
+		const std::string candidates[] = {
+			editors, NodCompile_Join( editors, "../../Release" ), NodCompile_Join( editors, ".." ),
+			NodCompile_Join( app, "nod-editors" ),
+			NodCompile_Join( app, "../../nodsdk-scghost/build/niltomap/Release" ),
+			NodCompile_Join( app, "../../nodsdk-scghost/build/niltomap" ),
+			NodCompile_Join( app, "../../nodsdk-scghost/build/viewer/cmake/Release" ),
+			NodCompile_Join( app, "../../nodsdk-scghost/build/viewer/cmake" )
+		};
+		for ( size_t i = 0; i != G_N_ELEMENTS( candidates ); ++i ) {
+			if ( !candidates[i].empty() && NodCompile_HasTools( candidates[i] ) ) {
+				remembered.tools = NodCompile_Resolve( candidates[i] ); break;
+			}
+		}
+	}
+
+	if ( remembered.map != currentmap ) {
+		remembered.mapName.clear();
+	}
+
+	GtkWidget *dialog = gtk_dialog_new_with_buttons( _( "Convert NOD level" ),
+		GTK_WINDOW( g_pParentWnd->m_pWidget ), GTK_DIALOG_MODAL,
+		_( "Save and Export" ), GTK_RESPONSE_ACCEPT, _( "Close" ), GTK_RESPONSE_CLOSE, NULL );
+	gtk_window_set_default_size( GTK_WINDOW( dialog ), 860, 900 );
+	GtkWidget *box = gtk_vbox_new( FALSE, 8 );
+	gtk_container_set_border_width( GTK_CONTAINER( box ), 10 );
+	gtk_container_add( GTK_CONTAINER( gtk_dialog_get_content_area( GTK_DIALOG( dialog ) ) ), box );
+	GtkWidget *table = gtk_table_new( 5, 2, FALSE );
+	gtk_table_set_row_spacings( GTK_TABLE( table ), 5 );
+	gtk_table_set_col_spacings( GTK_TABLE( table ), 10 );
+	gtk_box_pack_start( GTK_BOX( box ), table, FALSE, FALSE, 0 );
+	GtkWidget *map = NodProject_PathRow( table, 0, _( "Current MAP" ), currentmap, false );
+	NodProject_PathRow( table, 1, _( "Authoring workspace" ), workspace.c_str(), false );
+	GtkWidget *tools = NodProject_PathRow( table, 2, _( "SDK compiler binaries" ), remembered.tools.c_str(), true );
+	GtkWidget *assets = NodProject_PathRow( table, 3, _( "Read-only asset root" ), remembered.assets.c_str(), true );
+	GtkWidget *output = NodProject_PathRow( table, 4, _( "Output folder" ), remembered.output.c_str(), true );
+	NodExportDialog controls;
+	controls.Build( box, remembered );
+	GtkWidget *status = gtk_label_new( _( "Ready to export. Saves current edits; selected outputs share one MAP snapshot." ) );
+	gtk_misc_set_alignment( GTK_MISC( status ), 0.0, 0.5 );
+	gtk_label_set_line_wrap( GTK_LABEL( status ), TRUE );
+	gtk_box_pack_start( GTK_BOX( box ), status, FALSE, FALSE, 0 );
+	GtkWidget *bar = gtk_progress_bar_new();
+	gtk_box_pack_start( GTK_BOX( box ), bar, FALSE, FALSE, 0 );
+	GtkWidget *scroll = gtk_scrolled_window_new( NULL, NULL );
+	gtk_scrolled_window_set_policy( GTK_SCROLLED_WINDOW( scroll ), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC );
+	gtk_box_pack_start( GTK_BOX( box ), scroll, TRUE, TRUE, 0 );
+	GtkWidget *view = gtk_text_view_new();
+	gtk_text_view_set_editable( GTK_TEXT_VIEW( view ), FALSE );
+	gtk_text_view_set_cursor_visible( GTK_TEXT_VIEW( view ), FALSE );
+	gtk_container_add( GTK_CONTAINER( scroll ), view );
+	bool running = false;
+	g_signal_connect( dialog, "delete-event", G_CALLBACK( NodConvert_Delete ), &running );
+	gtk_widget_show_all( dialog );
+	for (;;) {
+		const gint response = gtk_dialog_run( GTK_DIALOG( dialog ) );
+		if ( response != GTK_RESPONSE_ACCEPT ) {
+			break;
+		}
+
+		NodCompileOptions options;
+		controls.Read( options );
+		options.workspace = workspace;
+		options.tools = gtk_entry_get_text( GTK_ENTRY( tools ) );
+		options.assets = gtk_entry_get_text( GTK_ENTRY( assets ) );
+		options.output = gtk_entry_get_text( GTK_ENTRY( output ) );
+		if ( modified || strcmp( currentmap, "unnamed.map" ) == 0 ) {
+			g_pParentWnd->OnFileSave();
+		}
+
+		gtk_entry_set_text( GTK_ENTRY( map ), currentmap );
+		if ( modified || strcmp( currentmap, "unnamed.map" ) == 0 ) {
+			continue;
+		}
+
+		options.map = currentmap;
+		const std::string invalid = NodCompile_Validate( options );
+		if ( !invalid.empty() ) {
+			Sys_FPrintf( SYS_ERR, "NOD conversion: %s\n", invalid.c_str() );
+			gtk_MessageBox( dialog, invalid.c_str(), _( "Cannot convert NOD level" ), MB_OK | MB_ICONERROR );
+			continue;
+		}
+
+		remembered = options;
+		NodConvertProgress progress;
+		progress.dialog = dialog;
+		progress.view = view;
+		progress.bar = bar;
+		gtk_progress_bar_set_fraction( GTK_PROGRESS_BAR( bar ), 0 );
+		gtk_text_buffer_set_text( gtk_text_view_get_buffer( GTK_TEXT_VIEW( view ) ), "", 0 );
+		std::thread worker;
+		try {
+			worker = std::thread( [&progress, options](){
+				std::string error;
+				const bool ok = NodCompile_Run( options, [&progress]( const std::string &text ){
+					std::lock_guard<std::mutex> lock( progress.mutex );
+					progress.log += text;
+				}, error );
+				std::lock_guard<std::mutex> lock( progress.mutex );
+				progress.ok = ok;
+				progress.error = error;
+				if ( !ok ) {
+					progress.log += "\nFAILED: " + error + "\n";
+				}
+
+				progress.done = true;
+			} );
+		}
+		catch ( const std::system_error &failure ) {
+			Sys_FPrintf( SYS_ERR, "Cannot start NOD conversion worker: %s\n", failure.what() );
+			gtk_MessageBox( dialog, failure.what(), _( "Cannot start conversion" ), MB_OK | MB_ICONERROR );
+			continue;
+		}
+
+		gtk_label_set_text( GTK_LABEL( status ), _( "Running selected exports. Please wait; closing is disabled until completion." ) );
+		gtk_widget_set_sensitive( table, FALSE );
+		gtk_widget_set_sensitive( controls.panel, FALSE );
+		gtk_dialog_set_response_sensitive( GTK_DIALOG( dialog ), GTK_RESPONSE_ACCEPT, FALSE );
+		gtk_dialog_set_response_sensitive( GTK_DIALOG( dialog ), GTK_RESPONSE_CLOSE, FALSE );
+		running = true;
+		g_timeout_add( 100, NodConvert_Progress, &progress );
+		while ( gtk_dialog_run( GTK_DIALOG( dialog ) ) != 1001 ) {}
+		worker.join();
+		running = false;
+		gtk_widget_set_sensitive( table, TRUE );
+		gtk_widget_set_sensitive( controls.panel, TRUE );
+		controls.Sensitivity();
+		gtk_dialog_set_response_sensitive( GTK_DIALOG( dialog ), GTK_RESPONSE_ACCEPT, TRUE );
+		gtk_dialog_set_response_sensitive( GTK_DIALOG( dialog ), GTK_RESPONSE_CLOSE, TRUE );
+		Sys_Printf( "%s", progress.log.c_str() );
+		gtk_label_set_text( GTK_LABEL( status ), progress.ok
+			? _( "Export complete. Selected outputs were written; unselected outputs were preserved." )
+			: _( "Conversion failed. See the compiler log below." ) );
+		if ( !progress.ok ) {
+			Sys_FPrintf( SYS_ERR, "NOD conversion failed: %s\n", progress.error.c_str() );
+			gtk_MessageBox( dialog, progress.error.c_str(), _( "NOD conversion failed" ), MB_OK | MB_ICONERROR );
+		}
+	}
+
+	gtk_widget_destroy( dialog );
+}
+
+static void DoNodProjectSettings(){
+	Str filename = g_strGamesPath;
+	AddSlash( filename );
+	filename += g_pGameDescription->mGameFile;
+	xmlDocPtr doc = NodProject_Load( filename.GetBuffer() );
+	if ( !doc ) {
+		Sys_FPrintf( SYS_ERR, "Cannot read NOD profile: %s\n", filename.GetBuffer() );
+		gtk_MessageBox( g_pParentWnd->m_pWidget, _( "Cannot read the NOD game profile. See the console for its path." ),
+						_( "NOD Project Settings" ), MB_OK | MB_ICONERROR );
+		return;
+	}
+
+	GtkWidget *dialog = gtk_dialog_new_with_buttons( _( "NOD Project Settings" ),
+		GTK_WINDOW( g_pParentWnd->m_pWidget ),
+		(GtkDialogFlags)( GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT ),
+		_( "Save" ), GTK_RESPONSE_OK, _( "Cancel" ), GTK_RESPONSE_CANCEL, NULL );
+	gtk_window_set_default_size( GTK_WINDOW( dialog ), 760, -1 );
+	GtkWidget *box = gtk_vbox_new( FALSE, 8 );
+	gtk_container_set_border_width( GTK_CONTAINER( box ), 10 );
+	gtk_container_add( GTK_CONTAINER( gtk_dialog_get_content_area( GTK_DIALOG( dialog ) ) ), box );
+	GtkWidget *table = gtk_table_new( 9, 2, FALSE );
+	gtk_table_set_row_spacings( GTK_TABLE( table ), 5 );
+	gtk_table_set_col_spacings( GTK_TABLE( table ), 10 );
+	gtk_box_pack_start( GTK_BOX( box ), table, FALSE, FALSE, 0 );
+	NodProject_PathRow( table, 0, _( "Authoring workspace" ), g_pGameDescription->mEnginePath, false );
+	NodProject_PathRow( table, 1, _( "Project file" ), g_PrefsDlg.m_strLastProject, false );
+	NodProject_PathRow( table, 2, _( "Project base" ), ValueForKey( g_qeglobals.d_project_entity, "basepath" ), false );
+	Str defaultMaps = g_pGameDescription->mEnginePath;
+	defaultMaps += g_pGameDescription->mBaseGame;
+	AddSlash( defaultMaps );
+	defaultMaps += "maps/";
+	NodProject_PathRow( table, 3, _( "Default map folder" ), defaultMaps, false );
+	NodProject_PathRow( table, 4, _( "Entity definitions" ), ValueForKey( g_qeglobals.d_project_entity, "entitypath" ), false );
+	NodProject_PathRow( table, 5, _( "Active asset root" ), g_pGameDescription->mNodAssetPath, false );
+	GtkWidget *maps = NodProject_PathRow( table, 6, _( "Map folder (optional)" ),
+										 NodProject_Attribute( doc, "nod_mappath" ).c_str(), true );
+	GtkWidget *assets = NodProject_PathRow( table, 7, _( "Asset root (optional)" ),
+										   NodProject_Attribute( doc, "nod_assetpath" ).c_str(), true );
+	GtkWidget *editors = NodProject_PathRow( table, 8, _( "SDK editor binaries (optional)" ),
+											NodProject_Attribute( doc, "nod_editorspath" ).c_str(), true );
+	GtkWidget *notes = gtk_label_new( _(
+		"Blank paths use defaults. Existing maps are not moved.\n"
+		"Asset root: parent of Materials; read-only. Changes require a restart.\n"
+		"SDK binaries: NOTEditor and NSDEditor folder; changes apply immediately.\n"
+		"Native editors save workspace copies only." ) );
+	gtk_misc_set_alignment( GTK_MISC( notes ), 0.0, 0.5 );
+	gtk_box_pack_start( GTK_BOX( box ), notes, FALSE, FALSE, 0 );
+	gtk_widget_show_all( dialog );
+
+	while ( gtk_dialog_run( GTK_DIALOG( dialog ) ) == GTK_RESPONSE_OK ) {
+		const char *mapPath = gtk_entry_get_text( GTK_ENTRY( maps ) );
+		const char *assetPath = gtk_entry_get_text( GTK_ENTRY( assets ) );
+		std::string error = NodProject_ValidatePaths( mapPath, assetPath );
+		// Until restart, map dialogs must also stay outside the currently mounted assets.
+		if ( error.empty() && *mapPath && g_pGameDescription->mNodAssetPath.GetLength() ) {
+			error = NodProject_ValidatePaths( mapPath, g_pGameDescription->mNodAssetPath );
+		}
+
+		if ( error.empty() && !*mapPath ) {
+			error = NodProject_ValidatePaths( defaultMaps, assetPath );
+		}
+
+		const bool assetsChanged = NodProject_Attribute( doc, "nod_assetpath" ) != assetPath;
+		if ( error.empty() && NodProject_Save( filename, doc, mapPath, assetPath, error,
+											 gtk_entry_get_text( GTK_ENTRY( editors ) ) ) ) {
+			g_pGameDescription->mNodMapPath = mapPath;
+			g_pGameDescription->mNodEditorsPath = gtk_entry_get_text( GTK_ENTRY( editors ) );
+			Sys_Printf( "Saved NOD project paths: %s\n", filename.GetBuffer() );
+			if ( assetsChanged ) {
+				gtk_MessageBox( dialog, _( "Asset settings saved. Restart Radiant to apply." ),
+								_( "NOD Project Settings" ), MB_OK | MB_ICONINFORMATION );
+			}
+
+			break;
+		}
+
+		Sys_FPrintf( SYS_ERR, "NOD project settings: %s\n", error.c_str() );
+		gtk_MessageBox( dialog, error.c_str(), _( "NOD Project Settings" ), MB_OK | MB_ICONERROR );
+	}
+
+	gtk_widget_destroy( dialog );
+	xmlFreeDoc( doc );
+}
+
 void DoProjectSettings(){
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+		DoNodProjectSettings();
+		return;
+	}
+
 	GtkWidget *dialog, *content_area;
 	GtkWidget *frame, *label, *vbox, *table1, *table2, *button;
 	GtkWidget *add_button, *change_button, *remove_button;
@@ -605,6 +1509,7 @@ void DoProjectSettings(){
 #endif
 		}
 	}
+
 	gtk_table_attach( GTK_TABLE( table2 ), game_select, 1, 2, 6, 7,
 					  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
 					  (GtkAttachOptions) ( 0 ), 0, 0 );
@@ -637,6 +1542,7 @@ void DoProjectSettings(){
 				break;
 			}
 		}
+
 		if( isBasegame ) {
 			for( lst = mod_list; lst != NULL; lst = g_list_next( lst ) )
 			{
@@ -654,6 +1560,7 @@ void DoProjectSettings(){
 			}
 		}
 	}
+
 	if( isBasegame ) {
 		for( lst = mod_list; lst != NULL; lst = g_list_next( lst ) )
 		{
@@ -669,6 +1576,7 @@ void DoProjectSettings(){
 			}
 		}
 	}
+
 	gtk_entry_set_text( GTK_ENTRY( fs_game_entry ), fs_game );
 	g_list_free( combo_list );
 
@@ -721,6 +1629,7 @@ void DoProjectSettings(){
 				break;
 			}
 		}
+
 		if( isBasemode ) {
 			for( lst = gamemode_list; lst != NULL; lst = g_list_next( lst ) )
 			{
@@ -735,6 +1644,7 @@ void DoProjectSettings(){
 				}
 			}
 		}
+
 		g_list_free( combo_list );
 	}
 
@@ -794,12 +1704,15 @@ void DoProjectSettings(){
 #endif
 
 		// convert path to unix format
-		for ( r = gtk_entry_get_text( GTK_ENTRY( base ) ), w = buf; *r != '\0'; r++, w++ )
+		for ( r = gtk_entry_get_text( GTK_ENTRY( base ) ), w = buf; *r != '\0'; r++, w++ ) {
 			*w = ( *r == '\\' ) ? '/' : *r;
+		}
+
 		// add last slash
 		if ( w != buf && *( w - 1 ) != '/' ) {
 			*( w++ ) = '/';
 		}
+
 		// terminate string
 		*w = '\0';
 		SetKeyValue( g_qeglobals.d_project_entity, "basepath", buf );
@@ -839,9 +1752,11 @@ void DoProjectSettings(){
 				}
 			}
 		}
+
 		if( new_fs_game == NULL ) {
 			isBasegame = qtrue;
 		}
+
 		if( isBasegame ) {
 			DeleteKey( g_qeglobals.d_project_entity, "gamename" );
 		} else {
@@ -875,6 +1790,7 @@ void DoProjectSettings(){
 					}
 				}
 			}
+
 			if( !new_mode ) {
 				for( lst = gamemode_list; lst != NULL; lst = g_list_next( lst ) )
 				{
@@ -885,6 +1801,7 @@ void DoProjectSettings(){
 					}
 				}
 			}
+
 			if( new_mode ) {
 				SetKeyValue( g_qeglobals.d_project_entity, "gamemode", new_mode );
 			}
@@ -895,6 +1812,7 @@ void DoProjectSettings(){
 		if ( str[0] == '\0' ) {
 			str = g_pGameDescription->mBaseGame.GetBuffer();
 		}
+
 		g_qeglobals.m_strHomeMaps += str;
 		g_qeglobals.m_strHomeMaps += G_DIR_SEPARATOR;
 
@@ -1151,6 +2069,7 @@ static void add_entity_selection( entity_t *pEntity ) {
 		}
 	}
 }
+
 static void entitylist_selected_foreach( GtkTreeModel *model, GtkTreePath *path, GtkTreeIter *iter, gpointer data ) {
 	entity_t* pEntity;
 	gtk_tree_model_get( model, iter, 1, &pEntity, -1 );
@@ -1166,6 +2085,7 @@ static void entitylist_selected_foreach( GtkTreeModel *model, GtkTreePath *path,
 		}
 	}
 }
+
 static void entitylist_multiselect( GtkWidget *widget, gpointer data ) {
 	GtkTreeView *view = GTK_TREE_VIEW( g_object_get_data( G_OBJECT( data ), "entities" ) );
 
@@ -1192,14 +2112,17 @@ static void entity_focus_2d( entity_t *pEntity ) {
 					if ( g_pParentWnd->GetXYWnd() ) {
 						g_pParentWnd->GetXYWnd()->GetOrigin()[i] = ( b->mins[i] + b->maxs[i] ) / 2;
 					}
+
 					if ( g_pParentWnd->GetXZWnd() ) {
 						g_pParentWnd->GetXZWnd()->GetOrigin()[i] = ( b->mins[i] + b->maxs[i] ) / 2;
 					}
+
 					if ( g_pParentWnd->GetYZWnd() ) {
 						g_pParentWnd->GetYZWnd()->GetOrigin()[i] = ( b->mins[i] + b->maxs[i] ) / 2;
 					}
 				}
 			}
+
 			Sys_UpdateWindows( W_ALL );
 		}
 	}
@@ -1225,6 +2148,7 @@ static void entitylist_focus( GtkWidget *widget, gpointer data ){
 				entity_focus_2d( pEntity );
 			}
 		}
+
 		g_list_free_full( rows, (GDestroyNotify)gtk_tree_path_free );
 
 	} else if ( gtk_tree_selection_get_selected( selection, &model, &selected ) ) {
@@ -1240,6 +2164,7 @@ static gint entitylist_click( GtkWidget *widget, GdkEventButton *event, gpointer
 		entitylist_multiselect( NULL, data );
 		return TRUE;
 	}
+
 	return FALSE;
 }
 
@@ -1274,12 +2199,14 @@ static void entitylist_selection_changed( GtkTreeSelection* selection, gpointer 
 				}
 			}
 		}
+
 		g_list_free_full( rows, (GDestroyNotify)gtk_tree_path_free );
 		
 	} else if ( gtk_tree_selection_get_selected( selection, &model, &selected ) ) {
 		entity_t* pEntity;
 		gtk_tree_model_get( model, &selected, 1, &pEntity, -1 );
 	}
+
 	if ( pEntity ) {
 		for ( epair_t* pEpair = pEntity->epairs; pEpair; pEpair = pEpair->next )
 		{
@@ -1296,6 +2223,7 @@ static void entitylist_selection_changed( GtkTreeSelection* selection, gpointer 
 		} else {
 			gtk_text_buffer_set_text( buffer, _( "No description available." ), -1 );
 		}
+
 		gtk_notebook_set_current_page( GTK_NOTEBOOK( notebook ), gtk_notebook_page_num( GTK_NOTEBOOK( notebook ), desc_page ) );
 	}
 
@@ -1309,6 +2237,7 @@ static void EnitityList_response( GtkDialog *dialog, gint response_id, gpointer 
 
 	EntityList_dialog = NULL;
 }
+
 void DoEntityList(){
 	static GtkWidget *dialog;
 	GtkWidget *vbox, *hbox2, *button, *scr, *content_area, *paned;
@@ -1521,6 +2450,7 @@ static void rotatedlg_apply( GtkWidget *widget, gpointer data ){
 		rotation[axis] = gtk_spin_button_get_value( spin );
 		gtk_spin_button_set_value( spin, 0.0f );
 	}
+
 	if ( rotation[0] == 0 && rotation[1] == 0 && rotation[2] == 0 ) {
 		return;
 	}
@@ -1532,6 +2462,7 @@ static void rotatedlg_apply( GtkWidget *widget, gpointer data ){
 			Select_RotateAxis( axis, rotation[axis] );
 		}
 	}
+
 	Undo_EndBrushList( &selected_brushes );
 	Undo_End();
 }
@@ -1567,7 +2498,7 @@ void DoRotateDlg(){
 
 	content_area = gtk_dialog_get_content_area( GTK_DIALOG( dialog ) );
 
-	label = gtk_label_new( _( "Rotation increments in degrees around world X/Y/Z.\nModel props rotate in place at their own origins." ) );
+	label = gtk_label_new( _( "World-axis rotation (degrees). Model props pivot in place." ) );
 	gtk_box_pack_start( GTK_BOX( content_area ), label, FALSE, FALSE, 5 );
 	gtk_widget_show( label );
 
@@ -1715,6 +2646,7 @@ bool WalkRegionBrush( brush_t **b, entity_t *e ){
 				break; // this is an active brush
 			}
 		}
+
 		if ( b2 == &active_brushes ) {
 			// this is a regioned out brush
 			*b = ( *b )->onext;
@@ -1747,6 +2679,7 @@ void SelectBrush( int entitynum, int brushnum ){
 				Sys_Status( "No such entity", 0 );
 				return;
 			}
+
 			if ( region_active ) {
 				// we need to make sure we walk to the next 'active' entity to have a valid --entitynum
 				// that is, find a brush that belongs to this entity in the active brushes
@@ -1758,6 +2691,7 @@ void SelectBrush( int entitynum, int brushnum ){
 							break; // this is an active entity
 						}
 					}
+
 					if ( b == &active_brushes ) {
 						// this is a regioned out entity
 						e = e->next;
@@ -1777,6 +2711,7 @@ void SelectBrush( int entitynum, int brushnum ){
 		Sys_Status( "No such brush", 0 );
 		return;
 	}
+
 	if ( region_active ) {
 		if ( !WalkRegionBrush( &b, e ) ) {
 			return;
@@ -1790,6 +2725,7 @@ void SelectBrush( int entitynum, int brushnum ){
 			Sys_Status( "No such brush", 0 );
 			return;
 		}
+
 		if ( region_active ) {
 			if ( !WalkRegionBrush( &b, e ) ) {
 				return;
@@ -1833,14 +2769,15 @@ static void GetSelectionIndex( int *ent, int *brush ){
 	// find entity
 	if ( b->owner != world_entity ) {
 		( *ent )++;
-		for ( entity = entities.next; entity != &entities; entity = entity->next, ( *ent )++ )
-			;
+		for ( entity = entities.next; entity != &entities; entity = entity->next, ( *ent )++ ) {
+		}
 	}
 
 	// find brush
-	for ( b2 = b->owner->brushes.onext; b2 != b && b2 != &b->owner->brushes; b2 = b2->onext, ( *brush )++ )
-		;
+	for ( b2 = b->owner->brushes.onext; b2 != b && b2 != &b->owner->brushes; b2 = b2->onext, ( *brush )++ ) {
+	}
 }
+
 static void findbrushdialog_apply( GtkWidget *widget, gpointer data ){
 	int ent_num;
 	int brush_num;
@@ -1854,6 +2791,7 @@ static void findbrushdialog_apply( GtkWidget *widget, gpointer data ){
 
 	SelectBrush( ent_num, brush_num );
 }
+
 static void findbrushdialog_response( GtkWidget *widget, gint response_id, gpointer data ){
 
 	if ( response_id == GTK_RESPONSE_OK || response_id == GTK_RESPONSE_APPLY ) {
@@ -2049,6 +2987,7 @@ void DoNewPatchDlg(){
 	{
 		gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( combo ), (const char *)lst->data );
 	}
+
 	gtk_combo_box_set_active( GTK_COMBO_BOX( combo ), 0 );
 	gtk_table_attach( GTK_TABLE( table ), combo, 1, 2, 0, 1,
 					  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
@@ -2061,6 +3000,7 @@ void DoNewPatchDlg(){
 	{
 		g_object_set( G_OBJECT( lst->data ), "xalign", 1.0, (char*)NULL );
 	}
+
 	g_list_free( cells );
 
 	height_combo = combo = gtk_combo_box_text_new();
@@ -2068,6 +3008,7 @@ void DoNewPatchDlg(){
 	{
 		gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( combo ), (const char *)lst->data );
 	}
+
 	gtk_combo_box_set_active( GTK_COMBO_BOX( combo ), 0 );
 	gtk_table_attach( GTK_TABLE( table ), combo, 1, 2, 1, 2,
 					  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ),
@@ -2079,6 +3020,7 @@ void DoNewPatchDlg(){
 	{
 		g_object_set( G_OBJECT( lst->data ), "xalign", 1.0, (char*)NULL );
 	}
+
 	g_list_free( cells );
 
 	g_list_free( combo_list );
@@ -2125,6 +3067,7 @@ static void scaledlg_apply( GtkWidget *widget, gpointer data ){
 	if ( sx == 1 && sy == 1 && sz == 1 ) {
 		return;
 	}
+
 	if ( sx > 0 && sy > 0 && sz > 0 ) {
 		Undo_Start( "scale" );
 		Undo_AddBrushList( &selected_brushes );
@@ -2169,7 +3112,7 @@ void DoScaleDlg(){
 
 	content_area = gtk_dialog_get_content_area( GTK_DIALOG( dialog ) );
 
-	label = gtk_label_new( _( "Scale factors: 1 keeps the current size.\nModel props resize in place on their local axes." ) );
+	label = gtk_label_new( _( "Scale factors (1 = unchanged); models use local axes." ) );
 	gtk_box_pack_start( GTK_BOX( content_area ), label, FALSE, FALSE, 5 );
 	gtk_widget_show( label );
 
@@ -2327,6 +3270,7 @@ void DoThickenDlg(){
 		else{
 			bGroupResult = false;
 		}
+
 		new_amount = gtk_spin_button_get_value_as_int( GTK_SPIN_BUTTON( amount ) );
 		Patch_Thicken( new_amount, gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( seams ) ), bGroupResult );
 		Sys_UpdateWindows( W_ALL );
@@ -2537,8 +3481,10 @@ void DoCommandListDlg(){
 			GSList *cmds = NULL;
 			int n;
 
-			for ( n = 0; n < g_nCommandCount; n++ )
+			for ( n = 0; n < g_nCommandCount; n++ ) {
 				cmds = g_slist_append( cmds, (gpointer)g_Commands[n].m_strCommand );
+			}
+
 			cmds = g_slist_sort( cmds, ( gint ( * )( const void *, const void * ) )strcmp );
 
 			Sys_Printf( "Writing the command list to %s", path.GetBuffer() );
@@ -2546,10 +3492,11 @@ void DoCommandListDlg(){
 
 			while ( cmds )
 			{
-				for ( n = 0; n < g_nCommandCount; n++ )
+				for ( n = 0; n < g_nCommandCount; n++ ) {
 					if ( cmds->data == g_Commands[n].m_strCommand ) {
 						break;
 					}
+				}
 
 				char c = g_Commands[n].m_nKey;
 				CString strLine, strMod( "" ), strKeys( c );
@@ -2565,15 +3512,19 @@ void DoCommandListDlg(){
 				if ( g_Commands[n].m_nModifiers & RAD_SHIFT ) {
 					strMod = "Shift";
 				}
+
 				if ( g_Commands[n].m_nModifiers & RAD_ALT ) {
 					strMod += ( strMod.GetLength() > 0 ) ? " + Alt" : "Alt";
 				}
+
 				if ( g_Commands[n].m_nModifiers & RAD_CONTROL ) {
 					strMod += ( strMod.GetLength() > 0 ) ? " + Control" : "Control";
 				}
+
 				if ( strMod.GetLength() > 0 ) {
 					strMod += " + ";
 				}
+
 				strMod += strKeys;
 
 				{
@@ -2622,9 +3573,11 @@ static void TextureListDialog_apply( GtkWidget *widget, gpointer data ){
 		if ( gtk_tree_path_get_depth( path ) == 1 ) {
 			Texture_ShowDirectory( gtk_tree_path_get_indices( path )[0] + CMD_TEXTUREWAD );
 		}
+
 		gtk_tree_path_free( path );
 	}
 }
+
 static void TextureListDialog_response( GtkWidget *widget, gint response_id, gpointer data ){
 
 	if ( response_id == GTK_RESPONSE_OK || response_id == GTK_RESPONSE_APPLY ) {
@@ -2635,6 +3588,7 @@ static void TextureListDialog_response( GtkWidget *widget, gint response_id, gpo
 		gtk_widget_destroy( GTK_WIDGET( widget ) );
 	}
 }
+
 void DoTextureListDlg(){
 	GtkWidget *dialog, *hbox, *scr, *content_area;
 	GtkDialogFlags flags = GTK_DIALOG_DESTROY_WITH_PARENT;
@@ -2686,6 +3640,7 @@ void DoTextureListDlg(){
 				gtk_list_store_append( store, &iter );
 				gtk_list_store_set( store, &iter, 0, (gchar*)dir->data, -1 );
 			}
+
 			ClearGSList( texdirs );
 		}
 
@@ -2820,6 +3775,7 @@ int DoCapDlg( int *type, bool *b_GroupResult ){
 			*type = IENDCAP; // *type = CapDialog::IENDCAP;
 
 		}
+
 		// Gef: Added toggle for optional cap func_grouping
 		*b_GroupResult = (bool)gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( group_toggle ) );
 
@@ -2920,6 +3876,7 @@ void DoScriptsDlg(){
 						gtk_list_store_set( store, &iter, 0, line, -1 );
 					}
 				}
+
 				fclose( f );
 			}
 		}
@@ -3035,6 +3992,7 @@ int DoBSInputDlg( const char *fields[5], float values[5] ){
 
 		values[i] = atof( gtk_entry_get_text( GTK_ENTRY( entries[i] ) ) );
 	}
+
 	switch( response_id ) {
 	case GTK_RESPONSE_OK:
 		ret = IDOK;
@@ -3192,8 +4150,9 @@ char* DoNameDlg( const char* title ){
 	gtk_grab_add( dlg );
 	gtk_widget_show( dlg );
 
-	while ( loop )
+	while ( loop ) {
 		gtk_main_iteration();
+	}
 
 	if ( ret == IDOK ) {
 		str = strdup( gtk_entry_get_text( GTK_ENTRY( entry ) ) );
@@ -3345,6 +4304,7 @@ HWND FindEditWindow(){
 			}
 		}
 	}
+
 	return NULL;
 }
 
@@ -3366,6 +4326,7 @@ HWND FindEditWindow(){
 			}
 		}
 	}
+
 	return NULL;
 }
 
@@ -3378,6 +4339,7 @@ HWND FindEditWindow(){
 			hwndEdit = FindWindowEx( hwndTab, NULL, "TRicherEdit", NULL );
 		}
 	}
+
 	return hwndEdit;
 }
 #endif
@@ -3437,6 +4399,7 @@ static void DoGtkTextEditor( const char* filename, guint cursorpos ){
 		CreateGtkTextEditor(); // build it the first time we need it
 
 	}
+
 	// Load file
 	FILE *f = fopen( filename, "r" );
 
@@ -3463,14 +4426,16 @@ static void DoGtkTextEditor( const char* filename, guint cursorpos ){
 		if ( old_filename ) {
 			free( old_filename );
 		}
+
 		g_object_set_data( G_OBJECT( text_editor ), "filename", strdup( filename ) );
 
 		// trying to show later
 		gtk_widget_show( text_editor );
 
 #ifdef _WIN32
-		while ( gtk_events_pending() )
+		while ( gtk_events_pending() ) {
 			gtk_main_iteration();
+		}
 #endif
 
 		// only move the cursor if it's not exceeding the size..
@@ -3525,9 +4490,11 @@ void DoTextEditor( const char* filename, int cursorpos ){
 					{
 						return;
 					}
+
 					errstr = _( "There is no application associated with the given file name extension." );
 					break;
 				}
+
 				case ERROR_PATH_NOT_FOUND:
 				//case SE_ERR_PNF:
 					errstr = _( "The specified path was not found." );
@@ -3536,8 +4503,10 @@ void DoTextEditor( const char* filename, int cursorpos ){
 					errstr = "";
 					break;
 			}
+
 			Sys_FPrintf( SYS_WRN, "Failed to open file '%s'. %s\n", filename, errstr );
 		}
+
 		return;
 	}
 #else

@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: mainframe.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -38,6 +64,14 @@
 #include "groupdialog.h"
 #include "patchdialog.h"
 #include "filters.h"
+
+static void OnNodViewOptions( GtkWidget *, gpointer ){
+	DoNodViewOptions();
+}
+
+static void OnNodNativeEditor( GtkWidget *, gpointer data ){
+	DoNodNativeEditor( GPOINTER_TO_INT( data ) != 0 );
+}
 
 // use this to verbose what happens with the keyboard
 #ifdef _DEBUG
@@ -440,6 +474,7 @@ gint HandleCommand( GtkWidget *widget, gpointer data ){
 		} else {
 			str = gtk_label_get_text( GTK_LABEL( gtk_bin_get_child( GTK_BIN( widget ) ) ) );
 		}
+
 		g_pParentWnd->ActiveXY()->OnEntityCreate( str );
 	}
 	else{ switch ( id )
@@ -820,12 +855,15 @@ static gint mainframe_keypress( GtkWidget* widget, GdkEventKey* event, gpointer 
 			if ( Sys_AltDown() ) {
 				nState |= RAD_ALT;
 			}
+
 			if ( ( event->state & GDK_CONTROL_MASK ) != 0 ) {
 				nState |= RAD_CONTROL;
 			}
+
 			if ( ( event->state & GDK_SHIFT_MASK ) != 0 ) {
 				nState |= RAD_SHIFT;
 			}
+
 			if ( ( g_Commands[i].m_nModifiers & 0x7 ) == nState ) {
 				HandleCommand( NULL, GINT_TO_POINTER( g_Commands[i].m_nCommand ) );
 				g_signal_stop_emission_by_name( G_OBJECT( widget ), "key-press-event" );
@@ -867,6 +905,7 @@ static gint mainframe_keyrelease( GtkWidget* widget, GdkEventKey* event, gpointe
 				}
 
 				}
+
 				return FALSE;
 			}
 		}
@@ -880,11 +919,12 @@ static gint mainframe_keyrelease( GtkWidget* widget, GdkEventKey* event, gpointe
 // Window creation functions
 
 void AddMenuItem( GtkWidget* item, unsigned int id ){
-	for ( int i = 0; i < g_nCommandCount; i++ )
+	for ( int i = 0; i < g_nCommandCount; i++ ) {
 		if ( g_Commands[i].m_nCommand == id ) {
 			g_object_set_data( G_OBJECT( g_pParentWnd->m_pWidget ), g_Commands[i].m_strMenu, item );
 			break;
 		}
+}
 }
 
 void MainFrame::handle_help_command( int id ){
@@ -908,8 +948,10 @@ void MainFrame::process_xlink( Str &FileName, const char *menu_name, const char 
 		GtkWidget* menu_in_menu = create_menu_in_menu_with_mnemonic( menu, menu_name );
 		// start walking the nodes, find the 'links' one
 		xmlNodePtr pNode = pDoc->children;
-		while ( pNode && strcmp( (const char*)pNode->name, "links" ) )
+		while ( pNode && strcmp( (const char*)pNode->name, "links" ) ) {
 			pNode = pNode->next;
+		}
+
 		if ( pNode ) {
 			pNode = pNode->children;
 			while ( pNode )
@@ -930,12 +972,15 @@ void MainFrame::process_xlink( Str &FileName, const char *menu_name, const char 
 						*url = base_url;
 						*url += (char *)xmlGetProp( pNode, (xmlChar *)"url" );
 					}
+
 					mHelpURLs.push_back( url );
 					create_menu_item_with_mnemonic( menu_in_menu, (char *)xmlGetProp( pNode, (xmlChar *)"name" ), G_CALLBACK( HandleHelpCommand ), mHelpURLs.size() - 1 );
 				}
+
 				pNode = pNode->next;
 			}
 		}
+
 		xmlFreeDoc( pDoc );
 	}
 	else
@@ -1049,6 +1094,7 @@ void MainFrame::create_main_menu( GtkWidget *window, GtkWidget *vbox ){
 	if ( g_PrefsDlg.m_bDetachableMenus ) {
 		menu_tearoff( menu );
 	}
+
 	item = create_menu_item_with_mnemonic( menu, _( "_Undo" ),
 										   G_CALLBACK( HandleCommand ), ID_EDIT_UNDO );
 	g_object_set_data( G_OBJECT( window ), "menu_edit_undo", item );
@@ -1076,6 +1122,16 @@ void MainFrame::create_main_menu( GtkWidget *window, GtkWidget *vbox ){
 	menu = create_sub_menu_with_mnemonic( menu_bar, _( "_View" ) );
 	if ( g_PrefsDlg.m_bDetachableMenus ) {
 		menu_tearoff( menu );
+	}
+
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+		create_menu_item_with_mnemonic( menu, _( "NOD Layers and View Options..." ),
+									   G_CALLBACK( OnNodViewOptions ), 0 );
+		create_menu_item_with_mnemonic( menu, _( "NOD Template Archive Editor..." ),
+									   G_CALLBACK( OnNodNativeEditor ), 1 );
+		create_menu_item_with_mnemonic( menu, _( "NOD Scene Property Editor..." ),
+									   G_CALLBACK( OnNodNativeEditor ), 0 );
+		menu_separator( menu );
 	}
 
 	menu_in_menu = create_menu_in_menu_with_mnemonic( menu, _( "Toggle" ) );
@@ -1606,6 +1662,7 @@ void MainFrame::create_main_menu( GtkWidget *window, GtkWidget *vbox ){
 		menu_separator( menu );
 		create_menu_item_with_mnemonic( menu, _( "Thicken..." ), G_CALLBACK( HandleCommand ), ID_CURVE_THICKEN );
 	}
+
 	// Plugins menu
 	menu = create_sub_menu_with_mnemonic( menu_bar, _( "_Plugins" ) );
 	if ( g_PrefsDlg.m_bDetachableMenus ) {
@@ -1724,6 +1781,7 @@ static GtkWidget * toolbar_append_item( GtkToolbar *toolbar, const gchar *text, 
 
 	return GTK_WIDGET( item );
 }
+
 static GtkWidget * toolbar_append_space( GtkToolbar *toolbar )
 {
 	GtkToolItem *sep_item;
@@ -1734,6 +1792,7 @@ static GtkWidget * toolbar_append_space( GtkToolbar *toolbar )
 
 	return GTK_WIDGET( sep_item );
 }
+
 static GtkWidget * toolbar_append_element( GtkToolbar *toolbar, short childtype, const char* unused, const gchar *text, const gchar *tooltip_text, const gchar *private_text, GtkWidget *icon, GCallback callback, gpointer data )
 {
 	GtkToolItem *item;
@@ -1821,6 +1880,7 @@ void MainFrame::create_main_toolbar( GtkWidget *window, GtkWidget *vbox ){
 									 GINT_TO_POINTER( ID_POPUP_SELECTION ) );
 		g_object_set_data( G_OBJECT( window ), "tb_popup_selection", w );
 	}
+
 	toolbar_append_space( GTK_TOOLBAR( toolbar ) );
 
 	w = toolbar_append_item( GTK_TOOLBAR( toolbar ), "", _( "CSG Subtract" ), "",
@@ -2094,6 +2154,7 @@ static void mainframe_map( GtkWidget *widget ){
 		if ( g_PrefsDlg.m_bFloatingZ ) {
 			CHECK_RESTORE( g_pParentWnd->GetZWnd()->m_pParent );
 		}
+
 		CHECK_RESTORE( g_pParentWnd->GetXYWnd()->m_pParent );
 		CHECK_RESTORE( g_pParentWnd->GetXZWnd()->m_pParent );
 		CHECK_RESTORE( g_pParentWnd->GetYZWnd()->m_pParent );
@@ -2114,17 +2175,20 @@ static void mainframe_unmap( GtkWidget *widget ){
 		if ( g_PrefsDlg.m_bFloatingZ ) {
 			CHECK_MINIMIZE( g_pParentWnd->GetZWnd()->m_pParent );
 		}
+
 		CHECK_MINIMIZE( g_pParentWnd->GetXYWnd()->m_pParent );
 		CHECK_MINIMIZE( g_pParentWnd->GetXZWnd()->m_pParent );
 		CHECK_MINIMIZE( g_pParentWnd->GetYZWnd()->m_pParent );
 		CHECK_MINIMIZE( g_pGroupDlg->m_pWidget );
 	}
 }
+
 static gboolean mainframe_state( GtkWidget *widget, GdkEventWindowState *e, gpointer user_data ){
 
 	if( e->changed_mask & GDK_WINDOW_STATE_ICONIFIED && !( e->new_window_state & GDK_WINDOW_STATE_ICONIFIED ) ) {
 		mainframe_map( widget );
 	}
+
 	return FALSE;
 }
 
@@ -2132,8 +2196,10 @@ static GtkWidget* create_floating( MainFrame* mainframe ){
 	GtkWidget *wnd = gtk_window_new( GTK_WINDOW_TOPLEVEL );
 	//workaround for a bug with set_transient_for in GTK - resulting behaviour is not perfect but better than the bug.
 	//(see https://bugzilla.gnome.org/show_bug.cgi?id=658975 regarding the bug)
-	if (mainframe->CurrentStyle() != MainFrame::eFloating)
+	if (mainframe->CurrentStyle() != MainFrame::eFloating) {
 		gtk_window_set_transient_for( GTK_WINDOW( wnd ), GTK_WINDOW( mainframe->m_pWidget ) );
+	}
+
 	gtk_widget_set_events( wnd, GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK );
 	g_signal_connect( G_OBJECT( wnd ), "delete-event", G_CALLBACK( widget_delete_hide ), NULL );
 	g_signal_connect( G_OBJECT( wnd ), "destroy", G_CALLBACK( gtk_widget_destroy ), NULL );
@@ -2296,6 +2362,7 @@ void clipboard_paste(){
 				::GlobalUnlock( h );
 			}
 		}
+
 		::CloseClipboard();
 	}
 
@@ -2399,6 +2466,7 @@ void PositionWindowOnPrimaryScreen( window_position_t& position ){
 	if ( position.x + position.w >= ( primaryMonitorRect.x + primaryMonitorRect.width ) - 18 ) {
 		position.w = primaryMonitorRect.width - 18;
 	}
+
 	if ( position.y + position.h >= ( primaryMonitorRect.y + primaryMonitorRect.height ) - 18 ) {
 		position.h = primaryMonitorRect.height - 18;
 	}
@@ -2432,6 +2500,7 @@ static void textdirlist_activate( GtkTreeView *tree_view )
 			Texture_ShowDirectory_by_path( p );
 			g_free( p );
 		}
+
 		gtk_tree_path_free( path );
 	}
 }
@@ -2440,6 +2509,7 @@ static void textdirlist_row_activated( GtkTreeView *tree_view, GtkTreePath *path
 {
 	textdirlist_activate( tree_view );
 }
+
 static void textdirlist_cursor_changed( GtkTreeView *tree_view, gpointer user_data )
 {
 	textdirlist_activate( tree_view );
@@ -2729,6 +2799,7 @@ void MainFrame::Create(){
 						else{
 							gtk_paned_add1( GTK_PANED( hsplit ), vsplit2 );
 						}
+
 						gtk_widget_show( vsplit2 );
 
 						// camera
@@ -2903,6 +2974,7 @@ void MainFrame::Create(){
 					GtkWidget* frame = create_framed_widget( m_pZWnd->GetWidget() );
 					gtk_paned_add1( GTK_PANED( hsplit ), frame );
 				}
+
 				{
 					GtkWidget* frame = create_framed_widget( m_pXYWnd->GetWidget() );
 					gtk_paned_add2( GTK_PANED( hsplit ), frame );
@@ -3082,8 +3154,9 @@ void MainFrame::Create(){
 		m_pTexWnd->m_pParent = g_pGroupDlg->m_pWidget;
 		m_pZWnd = create_floating_zwnd( this );
 
-		while ( gtk_events_pending() )
+		while ( gtk_events_pending() ) {
 			gtk_main_iteration();
+		}
 
 		{
 			int x = GTK_PANED( m_pSplits[0] )->max_position / 2 - gutter;
@@ -3108,6 +3181,7 @@ void MainFrame::Create(){
 	if ( m_pXYWnd ) { // this is always true?
 		m_pXYWnd->SetActive( true );
 	}
+
 	m_bSplittersOK = true;
 	Texture_SetMode( g_qeglobals.d_savedinfo.iTexMenu );
 
@@ -3173,8 +3247,10 @@ MainFrame::MainFrame(){
 	m_pActiveXY = (XYWnd*)NULL;
 	m_bCamPreview = true;
 	m_pWatchBSP = NULL;
-	for ( int n = 0; n < 6; n++ )
+	for ( int n = 0; n < 6; n++ ) {
 		m_pStatusLabel[n] = NULL;
+	}
+
 	m_bNeedStatusUpdate = false;
 	m_nTimer = 0;
 	m_bSleeping = false;
@@ -3193,18 +3269,23 @@ void MainFrame::ReleaseContexts(){
 	if ( m_pXYWnd ) {
 		m_pXYWnd->DestroyContext();
 	}
+
 	if ( m_pYZWnd ) {
 		m_pYZWnd->DestroyContext();
 	}
+
 	if ( m_pXZWnd ) {
 		m_pXZWnd->DestroyContext();
 	}
+
 	if ( m_pCamWnd ) {
 		m_pCamWnd->DestroyContext();
 	}
+
 	if ( m_pTexWnd ) {
 		m_pTexWnd->DestroyContext();
 	}
+
 	if ( m_pZWnd ) {
 		m_pZWnd->DestroyContext();
 	}
@@ -3214,18 +3295,23 @@ void MainFrame::CreateContexts(){
 	if ( m_pCamWnd ) {
 		m_pCamWnd->CreateContext();
 	}
+
 	if ( m_pXYWnd ) {
 		m_pXYWnd->CreateContext();
 	}
+
 	if ( m_pYZWnd ) {
 		m_pYZWnd->CreateContext();
 	}
+
 	if ( m_pXZWnd ) {
 		m_pXZWnd->CreateContext();
 	}
+
 	if ( m_pTexWnd ) {
 		m_pTexWnd->CreateContext();
 	}
+
 	if ( m_pZWnd ) {
 		m_pZWnd->CreateContext();
 	}
@@ -3273,6 +3359,7 @@ void RefreshModelSkin( GSList **pModels, entitymodel_t *model ){
 		*pModels = g_slist_append( *pModels, model );
 		return;
 	}
+
 	// do we have this model already?
 	if ( g_slist_find( *pModels, model ) ) {
 #ifdef DBG_SLEEP
@@ -3282,6 +3369,7 @@ void RefreshModelSkin( GSList **pModels, entitymodel_t *model ){
 #endif
 		return;
 	}
+
 	model->nTextureBind = Texture_LoadSkin( ( (GString *)model->strSkin )->str, &model->nSkinWidth, &model->nSkinHeight );
 	if ( model->nTextureBind != -1 ) {
 		Sys_Printf( "LOADED SKIN: %s\n", ( (GString *)model->strSkin )->str );
@@ -3289,6 +3377,7 @@ void RefreshModelSkin( GSList **pModels, entitymodel_t *model ){
 	else{
 		Sys_Printf( "Load skin failed: %s\n", ( (GString *)model->strSkin )->str );
 	}
+
 	*pModels = g_slist_append( *pModels, model );
 #ifdef DBG_SLEEP
 	Sys_Printf( "Processed model %p %s\n", model, ( (GString *)model->strSkin )->str );
@@ -3450,6 +3539,7 @@ void MainFrame::OnDelete(){
 	else{
 		g_PrefsDlg.mWindowInfo.nZFloatWidth = gtk_paned_get_position( GTK_PANED( m_pSplits[0] ) );
 	}
+
 	if( g_PrefsDlg.m_bShowTexDirList && m_pSplits[4] ) {
 		g_PrefsDlg.mWindowInfo.nTextureDirectoryListWidth = gtk_paned_get_position( GTK_PANED( m_pSplits[4] ) );
 	}
@@ -3475,6 +3565,7 @@ void MainFrame::OnDestroy(){
 	if ( s_idle_id ) {
 		g_source_remove( s_idle_id );
 	}
+
 	if ( m_nTimer ) {
 		g_source_remove( m_nTimer );
 	}
@@ -3488,9 +3579,14 @@ void MainFrame::OnDestroy(){
 		gpointer w;
 
 		w = g_object_get_data( G_OBJECT( g_pGroupDlg->m_pWidget ), "split1" );
-		g_PrefsDlg.mWindowInfo.nEntitySplit1 = gtk_paned_get_position( GTK_PANED( w ) );
+		if ( w ) {
+			g_PrefsDlg.mWindowInfo.nEntitySplit1 = gtk_paned_get_position( GTK_PANED( w ) );
+		}
+
 		w = g_object_get_data( G_OBJECT( g_pGroupDlg->m_pWidget ), "split2" );
-		g_PrefsDlg.mWindowInfo.nEntitySplit2 = gtk_paned_get_position( GTK_PANED( w ) );
+		if ( w ) {
+			g_PrefsDlg.mWindowInfo.nEntitySplit2 = gtk_paned_get_position( GTK_PANED( w ) );
+		}
 
 		if ( !FloatingGroupDialog() ) {
 			GtkWidget *vsplit, *hsplit, *vsplit2, *hsplit2;
@@ -3523,6 +3619,7 @@ void MainFrame::OnDestroy(){
 				}
 			}
 		}
+
 		g_PrefsDlg.SavePrefs();
 		Sys_Printf( "Done prefs\n" );
 	}
@@ -3548,22 +3645,29 @@ void MainFrame::OnDestroy(){
 		g_PrefsDlg.m_strLastMap = currentmap;
 		g_PrefsDlg.SavePrefs();
 	}
+
 	Sys_Printf( "CleanUpEntities..." );
 	CleanUpEntities();
 	Sys_Printf( "Done.\n" );
 
 	Sys_Printf( "Releasing brushes..." );
-	while ( active_brushes.next != &active_brushes )
+	while ( active_brushes.next != &active_brushes ) {
 		Brush_Free( active_brushes.next, false );
-	while ( selected_brushes.next != &selected_brushes )
+	}
+	while ( selected_brushes.next != &selected_brushes ) {
 		Brush_Free( selected_brushes.next, false );
-	while ( filtered_brushes.next != &filtered_brushes )
+	}
+	while ( filtered_brushes.next != &filtered_brushes ) {
 		Brush_Free( filtered_brushes.next, false );
+	}
+
 	Sys_Printf( "Done.\n" );
 
 	Sys_Printf( "Releasing entities..." );
-	while ( entities.next != &entities )
+	while ( entities.next != &entities ) {
 		Entity_Free( entities.next );
+	}
+
 	Sys_Printf( "Done.\n" );
 
 	epair_t* pEPair = g_qeglobals.d_project_entity->epairs;
@@ -3588,6 +3692,7 @@ void MainFrame::OnDestroy(){
 	if ( world_entity ) {
 		Entity_Free( world_entity );
 	}
+
 	Sys_Printf( "Done.\n" );
 
 	Sys_Printf( "Shutdown VFS..." );
@@ -3633,6 +3738,7 @@ void MainFrame::LoadCommandMap(){
 					Sys_Printf( "Found user's shortcuts list at %s\n", strINI.GetBuffer() );
 					bUserCmdList = true;
 				}
+
 				CString strBuff;
 				strBuff = value;
 				strBuff.TrimLeft();
@@ -3644,16 +3750,19 @@ void MainFrame::LoadCommandMap(){
 					g_Commands[i].m_nModifiers |= RAD_ALT;
 					FindReplace( strBuff, "+alt", "" );
 				}
+
 				nSpecial = strBuff.Find( "+ctrl" );
 				if ( nSpecial >= 0 ) {
 					g_Commands[i].m_nModifiers |= RAD_CONTROL;
 					FindReplace( strBuff, "+ctrl", "" );
 				}
+
 				nSpecial = strBuff.Find( "+shift" );
 				if ( nSpecial >= 0 ) {
 					g_Commands[i].m_nModifiers |= RAD_SHIFT;
 					FindReplace( strBuff, "+shift", "" );
 				}
+
 				strBuff.TrimLeft();
 				strBuff.TrimRight();
 				strBuff.MakeUpper();
@@ -3674,11 +3783,13 @@ void MainFrame::LoadCommandMap(){
 							break;
 						}
 					}
+
 					if ( j == g_nKeyCount ) {
 						Sys_FPrintf( SYS_WRN, "WARNING: failed to parse user command %s\n", value );
 						continue;
 					}
 				}
+
 				// maybe this new shortcut is overriding another one
 				// then we need to disable the other binded key
 				for ( j = 0; j < g_nCommandCount; j++ )
@@ -3686,6 +3797,7 @@ void MainFrame::LoadCommandMap(){
 					if ( j == i ) {
 						continue;
 					}
+
 					if ( g_Commands[i].m_nKey == g_Commands[j].m_nKey && g_Commands[i].m_nModifiers == g_Commands[j].m_nModifiers ) {
 						// found!
 						g_Commands[j].m_nKey = 0;
@@ -3697,9 +3809,11 @@ void MainFrame::LoadCommandMap(){
 				}
 			}
 		}
+
 		if ( iOverrideCount ) {
 			Sys_Printf( "User's command list overrides %d default commands\n", iOverrideCount );
 		}
+
 		Sys_Printf( "Parsed %d custom shortcuts\n", iCount );
 	}
 	else{
@@ -3737,9 +3851,11 @@ void MainFrame::ShowMenuItemKeyBindings( GtkWidget* window ){
 			if ( g_Commands[i].m_nModifiers & RAD_SHIFT ) {
 				mods |= GDK_SHIFT_MASK;
 			}
+
 			if ( g_Commands[i].m_nModifiers & RAD_ALT ) {
 				mods |= GDK_MOD1_MASK;
 			}
+
 			if ( g_Commands[i].m_nModifiers & RAD_CONTROL ) {
 				mods |= GDK_CONTROL_MASK;
 			}
@@ -3771,17 +3887,21 @@ void MainFrame::ShowMenuItemKeyBindings( GtkWidget* window ){
 				g_string_append( gstring, "Shft" );
 				had_mod = TRUE;
 			}
+
 			if ( mods & GDK_CONTROL_MASK ) {
 				if ( had_mod ) {
 					g_string_append( gstring, "+" );
 				}
+
 				g_string_append( gstring, "Ctl" );
 				had_mod = TRUE;
 			}
+
 			if ( mods & GDK_MOD1_MASK ) {
 				if ( had_mod ) {
 					g_string_append( gstring, "+" );
 				}
+
 				g_string_append( gstring, "Alt" );
 				had_mod = TRUE;
 			}
@@ -3789,6 +3909,7 @@ void MainFrame::ShowMenuItemKeyBindings( GtkWidget* window ){
 			if ( had_mod ) {
 				g_string_append( gstring, "+" );
 			}
+
 			if ( g_Commands[i].m_nKey < 0x80 || ( g_Commands[i].m_nKey > 0x80 && g_Commands[i].m_nKey <= 0xff ) ) {
 				switch ( g_Commands[i].m_nKey )
 				{
@@ -3811,6 +3932,7 @@ void MainFrame::ShowMenuItemKeyBindings( GtkWidget* window ){
 				if ( tmp[0] != 0 && tmp[1] == 0 ) {
 					tmp[0] = toupper( tmp[0] );
 				}
+
 				g_string_append( gstring, tmp );
 				g_free( tmp );
 			}
@@ -3930,6 +4052,7 @@ void MainFrame::OnTimer(){
 				gtk_label_set_text( GTK_LABEL( m_pStatusLabel[n] ), m_strStatus[n] );
 			}
 		}
+
 		m_bNeedStatusUpdate = false;
 	}
 }
@@ -3944,6 +4067,7 @@ void MainFrame::SetStatusText( int nPane, const char* pText ){
 		UpdateStatusText();
 	}
 }
+
 void MainFrame::SetButtonMenuStates(){
 	GtkWidget *item;
 	g_bIgnoreCommands++;
@@ -4070,6 +4194,7 @@ void MainFrame::SetButtonMenuStates(){
 	case 200: id = ID_TEXTURES_TEXTUREWINDOWSCALE_200; break;
 	default: id = ID_TEXTURES_TEXTUREWINDOWSCALE_100; break;
 	}
+
 	SetTextureScale( id );
 
 	// FIXME TTimo cleaned up .. the right place to do this in QE_LoadProject?
@@ -4099,9 +4224,11 @@ void MainFrame::UpdateWindows( int nBits ){
 		if ( m_pXYWnd ) {
 			m_pXYWnd->RedrawWindow();
 		}
+
 		if ( m_pXZWnd ) {
 			m_pXZWnd->RedrawWindow();
 		}
+
 		if ( m_pYZWnd ) {
 			m_pYZWnd->RedrawWindow();
 		}
@@ -4182,6 +4309,7 @@ void MainFrame::RoutineProcessing(){
 			g_nUpdateBits = 0;        // re-entered due to the paint process.. only
 			UpdateWindows( nBits );   // happens in rare cases but causes a stack overflow
 		}
+
 /*
     // Enable/disable the menu items
     GtkWidget *item;
@@ -4241,6 +4369,7 @@ void MainFrame::CleanPlugInMenu(){
 				gtk_container_remove( GTK_CONTAINER( menu ), GTK_WIDGET( lst->data ) );
 			}
 		}
+
 		g_list_free( children );
 	}
 }
@@ -4270,11 +4399,13 @@ void MainFrame::AddPlugInMenuItem( IPlugIn* pPlugIn ){
 					g_signal_connect( G_OBJECT( item ), "activate",
 										G_CALLBACK( HandleCommand ), GINT_TO_POINTER( m_nNextPlugInID ) );
 				}
+
 				gtk_widget_show( item );
 				gtk_container_add( GTK_CONTAINER( menu ), item );
 				pPlugIn->addMenuID( m_nNextPlugInID++ );
 			}
 		}
+
 		gtk_menu_item_set_submenu( GTK_MENU_ITEM( parent ), menu );
 	}
 }
@@ -4377,6 +4508,7 @@ void MainFrame::NudgeSelection( int nDirection, float fAmount ){
 		if ( nDirection == 0 || nDirection == 3 ) {
 			fAmount = -fAmount;
 		}
+
 		vec3_t v;
 		v[0] = v[1] = v[2] = 1.0;
 		if ( fAmount > 0 ) {
@@ -4419,6 +4551,7 @@ void MainFrame::NudgeSelection( int nDirection, float fAmount ){
 			nDim = ActiveXY()->GetViewType() == XY ? 1 : 2;
 			fAmount = -fAmount;
 		}
+
 		Nudge( nDim, fAmount );
 	}
 }
@@ -4436,6 +4569,7 @@ void MainFrame::Nudge( int nDim, float fNudge ){
 	else{
 		Select_Move( vMove, true );
 	}
+
 	Sys_UpdateWindows( W_ALL );
 }
 
@@ -4537,6 +4671,17 @@ void MainFrame::OnFileSaveas(){
 	str = file_dialog( g_pParentWnd->m_pWidget, FALSE, _( "Save Map" ), buf, MAP_MAJOR, "maps/" );
 
 	if ( str != NULL ) {
+		if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+			modified = true;
+			Map_SaveFile( str, false );
+			if ( !modified ) {
+				strcpy( currentmap, str );
+				MRU_AddFile( str );
+			}
+
+			return;
+		}
+
 		strcpy( currentmap, str );
 		MRU_AddFile( str );
 		Map_SaveFile( str, false ); // ignore region
@@ -4759,6 +4904,7 @@ void MainFrame::OnSelectionDelete(){
 	{
 		Undo_AddEntity( brush->owner );
 	}
+
 	// NOTE: Select_Delete does NOT delete entities
 	Select_Delete();
 	Undo_EndBrushList( &selected_brushes );
@@ -4806,6 +4952,7 @@ void MainFrame::OnEditSaveprefab(){
 		getcwd( tmp, PATH_MAX );
 		CurPath = tmp;
 	}
+
 	AddSlash( CurPath );
 
 	filename = file_dialog( m_pWidget, FALSE, _( "Export Prefab" ), CurPath.GetBuffer(), MAP_MAJOR, "prefabs/" );
@@ -4991,6 +5138,7 @@ void MainFrame::OnToggleviewXz(){
 			else{
 				gtk_widget_show( m_pXZWnd->m_pParent );
 			}
+
 			g_PrefsDlg.m_bXZVis ^= 1;
 			g_PrefsDlg.SavePrefs();
 		}
@@ -5007,6 +5155,7 @@ void MainFrame::OnToggleviewYz(){
 			else{
 				gtk_widget_show( m_pYZWnd->m_pParent );
 			}
+
 			g_PrefsDlg.m_bYZVis ^= 1;
 			g_PrefsDlg.SavePrefs();
 		}
@@ -5022,6 +5171,7 @@ void MainFrame::OnTogglez(){
 			else{
 				gtk_widget_show( m_pZWnd->m_pParent );
 			}
+
 			g_PrefsDlg.m_bZVis ^= 1;
 			g_PrefsDlg.SavePrefs();
 		}
@@ -5076,6 +5226,7 @@ void MainFrame::OnViewNextview(){
 		else{
 			m_pXYWnd->SetViewType( XY );
 		}
+
 		m_pXYWnd->PositionView();
 		Sys_UpdateWindows( W_XY );
 	}
@@ -5086,6 +5237,7 @@ void MainFrame::OnViewXy(){
 		m_pXYWnd->SetViewType( XY );
 		m_pXYWnd->PositionView();
 	}
+
 	Sys_UpdateWindows( W_XY );
 }
 
@@ -5094,6 +5246,7 @@ void MainFrame::OnViewSide(){
 		m_pXYWnd->SetViewType( XZ );
 		m_pXYWnd->PositionView();
 	}
+
 	Sys_UpdateWindows( W_XY );
 }
 
@@ -5102,6 +5255,7 @@ void MainFrame::OnViewFront(){
 		m_pXYWnd->SetViewType( YZ );
 		m_pXYWnd->PositionView();
 	}
+
 	Sys_UpdateWindows( W_XY );
 }
 
@@ -5109,12 +5263,15 @@ void MainFrame::OnView100(){
 	if ( m_pXYWnd ) {
 		m_pXYWnd->SetScale( 1 );
 	}
+
 	if ( m_pXZWnd ) {
 		m_pXZWnd->SetScale( 1 );
 	}
+
 	if ( m_pYZWnd ) {
 		m_pYZWnd->SetScale( 1 );
 	}
+
 	Sys_UpdateWindows( W_XY | W_XY_OVERLAY );
 }
 
@@ -5171,6 +5328,7 @@ void MainFrame::OnViewZoomout(){
 			m_pYZWnd->SetScale( min_scale );
 		}
 	}
+
 	Sys_UpdateWindows( W_XY | W_XY_OVERLAY );
 }
 
@@ -5184,6 +5342,7 @@ void MainFrame::OnViewZzoomin(){
 	if ( z.scale > 4 ) {
 		z.scale = 4;
 	}
+
 	Sys_UpdateWindows( W_Z | W_Z_OVERLAY );
 }
 
@@ -5192,6 +5351,7 @@ void MainFrame::OnViewZzoomout(){
 	if ( z.scale < 0.125 ) {
 		z.scale = 0.125;
 	}
+
 	Sys_UpdateWindows( W_Z | W_Z_OVERLAY );
 }
 
@@ -5200,6 +5360,7 @@ void MainFrame::OnViewCubein(){
 	if ( g_PrefsDlg.m_nCubicScale < 1 ) {
 		g_PrefsDlg.m_nCubicScale = 1;
 	}
+
 	g_PrefsDlg.SavePrefs();
 	Sys_UpdateWindows( W_CAMERA );
 	SetGridStatus();
@@ -5210,6 +5371,7 @@ void MainFrame::OnViewCubeout(){
 	if ( g_PrefsDlg.m_nCubicScale > 22 ) {
 		g_PrefsDlg.m_nCubicScale = 22;
 	}
+
 	g_PrefsDlg.SavePrefs();
 	Sys_UpdateWindows( W_CAMERA );
 	SetGridStatus();
@@ -5286,6 +5448,7 @@ void MainFrame::OnViewShowWorkzone(){
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), TRUE );
 		g_qeglobals.d_show_work = true;
 	}
+
 	g_bIgnoreCommands--;
 	Sys_UpdateWindows( W_XY );
 }
@@ -5331,6 +5494,7 @@ void MainFrame::OnEntitiesSetViewAs( int mode ){
 			item = g_object_get_data( G_OBJECT( g_pParentWnd->m_pWidget ), "menu_view_entitiesas_skinnedandboxed" );
 			break;
 		}
+
 		g_bIgnoreCommands++;
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), TRUE );
 		g_bIgnoreCommands--;
@@ -5416,6 +5580,7 @@ void MainFrame::OnSelectionDragedges(){
 		if ( g_qeglobals.d_numpoints ) {
 			g_qeglobals.d_select_mode = sel_edge;
 		}
+
 		Sys_UpdateWindows( W_ALL );
 	}
 }
@@ -5438,6 +5603,7 @@ void MainFrame::OnSelectionDragvertecies(){
 				g_qeglobals.d_select_mode = sel_vertex;
 			}
 		}
+
 		Sys_UpdateWindows( W_ALL );
 	}
 }
@@ -5639,6 +5805,7 @@ void MainFrame::OnSelectionOutlineStyle(){
 	else{
 		g_qeglobals.d_savedinfo.iSelectedOutlinesStyle |= OUTLINE_ZBUF;
 	}
+
 	GtkWidget *item = GTK_WIDGET( g_object_get_data( G_OBJECT( m_pWidget ), "menu_selection_nooutline" ) );
 	g_bIgnoreCommands++;
 	gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), ( g_qeglobals.d_savedinfo.iSelectedOutlinesStyle & OUTLINE_ZBUF ) );
@@ -5650,6 +5817,7 @@ void MainFrame::OnSelectionSelectcompletetall(){
 	if ( ActiveXY() ) {
 		ActiveXY()->UndoCopy();
 	}
+
 	Select_CompleteTall();
 }
 
@@ -5679,10 +5847,12 @@ void MainFrame::OnViewClipper(){
 			if ( ActiveXY()->RotateMode() ) {
 				OnSelectMouserotate();
 			}
+
 			ActiveXY()->SetClipMode( true );
 			gtk_toggle_tool_button_set_active( GTK_TOGGLE_TOOL_BUTTON( w ), TRUE );
 		}
 	}
+
 	g_bIgnoreCommands--;
 }
 
@@ -5699,6 +5869,7 @@ void MainFrame::OnClipSelected(){
 		if ( g_bPatchBendMode ) {
 			Patch_BendHandleENTER();
 		}
+
 //    else if (g_bPatchBendMode)
 //      Patch_InsDelHandleENTER();
 	}
@@ -5854,6 +6025,7 @@ void MainFrame::OnGrid( unsigned int nID ){
 		case ID_GRID_128: g_qeglobals.d_gridsize = 7; break;
 		case ID_GRID_256: g_qeglobals.d_gridsize = 8; break;
 		}
+
 		g_qeglobals.d_gridsize = 1 << (int)g_qeglobals.d_gridsize;
 		g_qeglobals.d_bSmallGrid = false;
 	}
@@ -5951,6 +6123,7 @@ void MainFrame::OnTexturesLoad(){
 		if ( dir[strlen( dir ) - 1] == '/' || dir[strlen( dir ) - 1] == '\\' ) {
 			dir[strlen( dir ) - 1] = '\0';
 		}
+
 		char *pouic = MAX( strrchr( dir, '/' ),strrchr( dir, '\\' ) );
 		if ( pouic ) {
 			strcpy( texture_directory, pouic + 1 );
@@ -5960,6 +6133,7 @@ void MainFrame::OnTexturesLoad(){
 		else{
 			Sys_FPrintf( SYS_WRN, "Failed to extract the directory\n" );
 		}
+
 		g_free( dir );
 	}
 	else{
@@ -6373,6 +6547,7 @@ void MainFrame::OnMiscGamma(){
 		gtk_MessageBox( m_pWidget, _( "You must restart Radiant for Gamma settings to take effect." ) );
 	}
 }
+
 void MainFrame::OnMiscFindbrush(){
 	DoFind();
 }
@@ -6416,6 +6591,7 @@ void MainFrame::OnMiscSelectentitycolor(){
 			//--::SetWindowText( hwndEnt[EntKeyField], "color" );
 			//--AddProp();
 		}
+
 		Sys_UpdateWindows( W_ALL );
 	}
 }
@@ -6847,6 +7023,7 @@ void MainFrame::OnSelectMouserotate(){
 		if ( ActiveXY()->ClipMode() ) {
 			OnViewClipper();
 		}
+
 		if ( ActiveXY()->RotateMode() ) {
 			// SetRotateMode(false) always works
 			ActiveXY()->SetRotateMode( false );
@@ -6864,6 +7041,7 @@ void MainFrame::OnSelectMouserotate(){
 			}
 		}
 	}
+
 	g_bIgnoreCommands--;
 }
 
@@ -6875,11 +7053,13 @@ void MainFrame::OnSelectMousescale(){
 		if ( ActiveXY()->ClipMode() ) {
 			OnViewClipper();
 		}
+
 		if ( ActiveXY()->RotateMode() ) {
 			// SetRotateMode(false) always works
 			ActiveXY()->SetRotateMode( false );
 			gtk_toggle_tool_button_set_active( GTK_TOGGLE_TOOL_BUTTON( item ), FALSE );
 		}
+
 		if ( ActiveXY()->ScaleMode() ) {
 			ActiveXY()->SetScaleMode( false );
 			gtk_toggle_tool_button_set_active( GTK_TOGGLE_TOOL_BUTTON( item ), FALSE );
@@ -6890,6 +7070,7 @@ void MainFrame::OnSelectMousescale(){
 			gtk_toggle_tool_button_set_active( GTK_TOGGLE_TOOL_BUTTON( item ), TRUE );
 		}
 	}
+
 	g_bIgnoreCommands--;
 }
 
@@ -6906,6 +7087,7 @@ void MainFrame::OnScalelockx(){
 		g_nScaleHow |= SCALE_X;
 		gtk_toggle_tool_button_set_active( GTK_TOGGLE_TOOL_BUTTON( item ), TRUE );
 	}
+
 	g_bIgnoreCommands--;
 }
 
@@ -6922,6 +7104,7 @@ void MainFrame::OnScalelocky(){
 		g_nScaleHow |= SCALE_Y;
 		gtk_toggle_tool_button_set_active( GTK_TOGGLE_TOOL_BUTTON( item ), TRUE );
 	}
+
 	g_bIgnoreCommands--;
 }
 
@@ -6938,6 +7121,7 @@ void MainFrame::OnScalelockz(){
 		g_nScaleHow |= SCALE_Z;
 		gtk_toggle_tool_button_set_active( GTK_TOGGLE_TOOL_BUTTON( item ), TRUE );
 	}
+
 	g_bIgnoreCommands--;
 }
 
@@ -7072,6 +7256,7 @@ void MainFrame::OnCurveInsertcolumn(){
 	if ( &selected_brushes == selected_brushes.next ) {
 		return;
 	}
+
 	Undo_Start( "insert colum" );
 	Undo_AddBrushList( &selected_brushes );
 	//Patch_AdjustSelectedRowCols(0, 2);
@@ -7085,6 +7270,7 @@ void MainFrame::OnCurveInsertrow(){
 	if ( &selected_brushes == selected_brushes.next ) {
 		return;
 	}
+
 	Undo_Start( "insert row" );
 	Undo_AddBrushList( &selected_brushes );
 	//Patch_AdjustSelectedRowCols(2, 0);
@@ -7098,6 +7284,7 @@ void MainFrame::OnCurveDeletecolumn(){
 	if ( &selected_brushes == selected_brushes.next ) {
 		return;
 	}
+
 	Undo_Start( "delete column" );
 	Undo_AddBrushList( &selected_brushes );
 	Patch_AdjustSelected( false, true, true );
@@ -7110,6 +7297,7 @@ void MainFrame::OnCurveDeleterow(){
 	if ( &selected_brushes == selected_brushes.next ) {
 		return;
 	}
+
 	Undo_Start( "delete row" );
 	Undo_AddBrushList( &selected_brushes );
 	Patch_AdjustSelected( false, false, true );
@@ -7122,6 +7310,7 @@ void MainFrame::OnPatchTab(){
 	if ( g_bPatchBendMode ) {
 		Patch_BendHandleTAB();
 	}
+
 //  else if (g_bPatchInsertMode)
 //    Patch_InsDelHandleTAB();
 	else
@@ -7142,6 +7331,7 @@ void MainFrame::OnPatchTab(){
 						break;
 					}
 				}
+
 				if ( b2 == &e->brushes ) {
 					b2 = b2->onext;
 				}
@@ -7296,6 +7486,7 @@ void MainFrame::OnCameraAngleup( bool keydown ){
 			if ( m_pCamWnd->Camera()->angles[PITCH] > 85 ) {
 				m_pCamWnd->Camera()->angles[PITCH] = 85;
 			}
+
 			Sys_UpdateWindows( W_CAMERA | W_XY_OVERLAY );
 		}
 	}
@@ -7316,6 +7507,7 @@ void MainFrame::OnCameraAngledown( bool keydown ){
 			if ( m_pCamWnd->Camera()->angles[PITCH] < -85 ) {
 				m_pCamWnd->Camera()->angles[PITCH] = -85;
 			}
+
 			Sys_UpdateWindows( W_CAMERA | W_XY_OVERLAY );
 		}
 	}
@@ -7338,6 +7530,7 @@ void MainFrame::OnCameraStrafeleft( bool keydown ){
 				int nUpdate = ( g_PrefsDlg.m_bCamXYUpdate ) ? ( W_CAMERA | W_XY ) : ( W_CAMERA );
 				Sys_UpdateWindows( nUpdate );
 			}
+
 			return;
 		}
 	}
@@ -7359,6 +7552,7 @@ void MainFrame::OnCameraStraferight( bool keydown ){
 				int nUpdate = ( g_PrefsDlg.m_bCamXYUpdate ) ? ( W_CAMERA | W_XY ) : ( W_CAMERA );
 				Sys_UpdateWindows( nUpdate );
 			}
+
 			return;
 		}
 	}
@@ -7523,6 +7717,7 @@ void MainFrame::OnSelectionMovedown(){
 	if ( &selected_brushes == selected_brushes.next ) {
 		return;
 	}
+
 	Undo_Start( "move down" );
 	Undo_AddBrushList( &selected_brushes );
 
@@ -7540,6 +7735,7 @@ void MainFrame::OnSelectionMoveup(){
 	if ( &selected_brushes == selected_brushes.next ) {
 		return;
 	}
+
 	Undo_Start( "move up" );
 	Undo_AddBrushList( &selected_brushes );
 
@@ -7554,8 +7750,9 @@ void MainFrame::OnSelectionMoveup(){
 }
 
 void MainFrame::OnSelectionPrint(){
-	for ( brush_t* b = selected_brushes.next ; b != &selected_brushes ; b = b->next )
+	for ( brush_t* b = selected_brushes.next ; b != &selected_brushes ; b = b->next ) {
 		Brush_Print( b );
+}
 }
 
 void MainFrame::OnSelectionTogglesizepaint(){
@@ -7572,6 +7769,7 @@ void MainFrame::OnSnapToGrid(){
 	if ( &selected_brushes == selected_brushes.next ) {
 		return;
 	}
+
 	Undo_Start( "snap selection to grid" );
 	Undo_AddBrushList( &selected_brushes );
 	//Select_SnapToGrid();
@@ -7584,6 +7782,7 @@ void MainFrame::OnSnapToGrid(){
 			Brush_SnapToGrid( pb );
 		}
 	}
+
 	Sys_UpdateWindows( W_ALL );
 	Undo_EndBrushList( &selected_brushes );
 	Undo_End();
@@ -7604,11 +7803,13 @@ void PerformFiltering(){
 
 	FilterUpdateBase();
 
-	for ( brush = active_brushes.next; brush != &active_brushes; brush = brush->next )
+	for ( brush = active_brushes.next; brush != &active_brushes; brush = brush->next ) {
 		brush->bFiltered = FilterBrush( brush );
+	}
 
-	for ( brush = selected_brushes.next; brush != &selected_brushes; brush = brush->next )
+	for ( brush = selected_brushes.next; brush != &selected_brushes; brush = brush->next ) {
 		brush->bFiltered = FilterBrush( brush );
+}
 }
 
 void MainFrame::OnFilterAreaportals(){
@@ -7620,6 +7821,7 @@ void MainFrame::OnFilterAreaportals(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7634,6 +7836,7 @@ void MainFrame::OnFilterCaulk(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7648,6 +7851,7 @@ void MainFrame::OnFilterClips(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7662,6 +7866,7 @@ void MainFrame::OnFilterBotClips(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7676,6 +7881,7 @@ void MainFrame::OnFilterStructural(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7690,6 +7896,7 @@ void MainFrame::OnFilterDetails(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7704,6 +7911,7 @@ void MainFrame::OnFilterEntities(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7718,6 +7926,7 @@ void MainFrame::OnFilterHintsskips(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7732,6 +7941,7 @@ void MainFrame::OnFilterLights(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7746,6 +7956,7 @@ void MainFrame::OnFilterLiquids(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7760,6 +7971,7 @@ void MainFrame::OnFilterMist(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7774,6 +7986,7 @@ void MainFrame::OnFilterAtmospheric(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7788,6 +8001,7 @@ void MainFrame::OnFilterModels(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7802,6 +8016,7 @@ void MainFrame::OnFilterPatches(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7816,6 +8031,7 @@ void MainFrame::OnFilterPaths(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7830,6 +8046,7 @@ void MainFrame::OnFilterClusterportals(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7844,6 +8061,7 @@ void MainFrame::OnFilterLightgrid(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7858,6 +8076,7 @@ void MainFrame::OnFilterTranslucent(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7872,6 +8091,7 @@ void MainFrame::OnFilterTriggers(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7886,6 +8106,7 @@ void MainFrame::OnFilterWorld(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );
@@ -7900,6 +8121,7 @@ void MainFrame::OnFilterSky(){
 	else{
 		gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), FALSE );
 	}
+
 	g_bIgnoreCommands--;
 	PerformFiltering();
 	Sys_UpdateWindows( W_XY | W_CAMERA );

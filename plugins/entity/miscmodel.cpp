@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: miscmodel.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -24,6 +50,7 @@
 
 #include "entity_entitymodel.h"
 #include "entity.h"
+#include "../../radiant/modeltransform.h"
 
 //
 // CEntityMiscModel implementation
@@ -129,6 +156,7 @@ void CEntityMiscModel::OnKeyValueChanged( entity_t *e, const char *key, const ch
 		if ( value[0] != '\0' ) {
 			sscanf( value, "%f %f %f", &m_euler[1], &m_euler[2], &m_euler[0] );
 		}
+
 		UpdateCachedData();
 	}
 	else if ( strcmp( key, "modelscale" ) == 0 || strcmp( key,"modelscale_vec" ) == 0 ) {
@@ -144,6 +172,7 @@ void CEntityMiscModel::OnKeyValueChanged( entity_t *e, const char *key, const ch
 				Sys_FPrintf( SYS_WRN, "WARNING: ignoring 0 modelscale key\n" );
 			}
 		}
+
 		s = ValueForKey( e,"modelscale_vec" );
 		if ( s[0] != '\0' ) {
 			sscanf( s, "%f %f %f", &m_scale[0], &m_scale[1], &m_scale[2] );
@@ -152,6 +181,10 @@ void CEntityMiscModel::OnKeyValueChanged( entity_t *e, const char *key, const ch
 				Sys_FPrintf( SYS_WRN, "WARNING: ignoring 0 0 0 modelscale_vec key\n" );
 			}
 		}
+
+		UpdateCachedData();
+	}
+	else if ( strcmp( key, "nod_modelscale" ) == 0 || strcmp( key, "nod_modeloffset" ) == 0 ) {
 		UpdateCachedData();
 	}
 	else if ( strcmp( key, "origin" ) == 0 ) {
@@ -184,6 +217,7 @@ void CEntityMiscModel::BuildCacheRequestString( const char *name ){
 			else {
 				m_cachereq += "&";
 			}
+
 			m_cachereq += ep->value;
 		}
 	}
@@ -225,9 +259,15 @@ void CEntityMiscModel::SetName( const char *name ){
 
 void CEntityMiscModel::UpdateCachedData(){
 	aabb_t aabb_temp;
+	vec3_t translated, scaled;
+	if ( !ModelTransform_Native( ValueForKey( m_entity, "nod_modelscale" ),
+			ValueForKey( m_entity, "nod_modeloffset" ), m_translate, m_scale, translated, scaled ) ) {
+		Sys_FPrintf( SYS_WRN, "WARNING: invalid native model transform; retaining previous preview\n" );
+		return;
+	}
 
 	m4x4_identity( m_transform );
-	m4x4_pivoted_transform_by_vec3( m_transform, m_translate, m_euler, eXYZ, m_scale, m_pivot );
+	m4x4_pivoted_transform_by_vec3( m_transform, translated, m_euler, eXYZ, scaled, m_pivot );
 	memcpy( m_inverse_transform, m_transform, sizeof( m4x4_t ) );
 	m4x4_invert( m_inverse_transform );
 

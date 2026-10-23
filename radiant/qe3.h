@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: qe3.h
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -21,6 +47,7 @@
 
 #ifndef _QE3_H_
 #define _QE3_H_
+#include <string>
 
 #ifdef _WIN32
 
@@ -541,6 +568,7 @@ void ComputeAxisBase( vec3_t normal, vec3_t texS, vec3_t texT );
 void FaceToBrushPrimitFace( face_t *f );
 void BrushPrimitFaceToFace( face_t *f );
 void EmitBrushPrimitTextureCoordinates( face_t *, winding_t * );
+void EmitBrushPrimitTextureCoordinates( face_t *, winding_t *, bool preserveConstant );
 // EmitTextureCoordinates, is old code used for brush to brush primitive conversion
 void EmitTextureCoordinates( float *xyzst, qtexture_t *q, face_t *f );
 void Face_TexdefFromTextureCoordinates( float *xyzst1, float *xyzst2, float *xyzst3, qtexture_t *q, face_t *f );
@@ -824,6 +852,8 @@ extern void FindReplaceTextures( const char* pFind, const char* pReplace, bool b
    we dump those properties to the console when the project settings dialog shows up
  */
 extern void DoProjectSettings();
+extern void DoNodViewOptions();
+extern void DoNodNativeEditor( bool templates );
 extern qboolean region_active;
 extern void Brush_Print( brush_t* b );
 extern void Texture_ShowStartupShaders();
@@ -907,6 +937,14 @@ void CreateEntityFromName( const char* name, const vec3_t origin );
    (this was an addition for HL support)
  */
 void Eclass_Init();
+struct NodTemplateCatalog;
+struct NodTemplateChoice;
+bool NodTemplate_Query( const char *input, const char *name, NodTemplateCatalog &catalog, std::string &error,
+	const char *modifiers = NULL );
+bool NodClasses_Load( const char *archives, std::string &error );
+const NodTemplateChoice *NodClasses_Find( const char *name );
+const char *NodClasses_Context();
+unsigned NodClasses_Generation();
 eclass_t *Eclass_ForName( const char *name, qboolean has_brushes );
 eclass_t * EClass_Create( const char *name, float col1, float col2, float col3, const vec3_t *mins, const vec3_t *maxs, const char *comments );
 

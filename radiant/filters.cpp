@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: filters.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (c) 2001, Loki software, inc.
    All rights reserved.
 
@@ -29,6 +55,9 @@
  */
 
 #include "stdafx.h"
+#include "nodview.h"
+
+NodViewState g_nodViewState;
 
 /*
     Rambetter on Sun Jan 23, 2011:
@@ -68,13 +97,16 @@ bfilter_t *FilterAddImpl( bfilter_t *pFilter, int type, int bmask, const char *s
 	if ( type == 1 || type == 3 ) {
 		pNew->string = str;
 	}
+
 	if ( type == 2 || type == 4 || type == 5 || type == 6 || type == 7 ) {
 		pNew->mask = bmask;
 	}
+
 	if ( type == 8 ) {
 		pNew->string = str;
 		pNew->mask = bmask;
 	}
+
 	pNew->exclude = exclude;
 	if ( g_qeglobals.d_savedinfo.exclude & exclude ) {
 		pNew->active = true;
@@ -82,14 +114,17 @@ bfilter_t *FilterAddImpl( bfilter_t *pFilter, int type, int bmask, const char *s
 	else{
 		pNew->active = false;
 	}
+
 	if ( baseFilter ) {
 		if ( numBaseFilters >= MAX_BASE_FILTERS ) {
 			Error( "Base filters count exceeds MAX_BASE_FILTERS" );
 		}
+
 		baseFilters[numBaseFilters] = pNew;
 		baseFilterExcludes[numBaseFilters] = exclude;
 		numBaseFilters++;
 	}
+
 	return pNew;
 }
 
@@ -132,6 +167,7 @@ bfilter_t *FilterListDelete( bfilter_t *pFilter ){
 		memset( baseFilterExcludes, 0, sizeof( baseFilterExcludes ) ); // Strictly speaking we don't really need this.
 		numBaseFilters = 0; // We do need this.
 	}
+
 	return NULL;
 }
 
@@ -204,7 +240,15 @@ bool FilterBrush( brush_t *pb ){
 		return FALSE;       // during construction
 
 	}
+
 	if ( pb->hiddenBrush ) {
+		return TRUE;
+	}
+
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME
+		 && !g_nodViewState.Visible( g_pGameDescription->mGameFile, pb->owner->entityId,
+			ValueForKey( pb->owner, "classname" ), ValueForKey( pb->owner, "nod_id" ),
+			ValueForKey( pb->owner, "model" ) ) ) {
 		return TRUE;
 	}
 
@@ -232,6 +276,7 @@ bool FilterBrush( brush_t *pb ){
 			return TRUE;
 		}
 	}
+
 	if ( g_qeglobals.d_savedinfo.exclude & EXCLUDE_STRUCTURAL ) {
 		if ( !pb->patchBrush && !( pb->brush_faces->texdef.contents & CONTENTS_DETAIL ) ) {
 			return TRUE;
@@ -255,6 +300,7 @@ bool FilterBrush( brush_t *pb ){
 				if ( !filters->active ) {
 					continue;
 				}
+
 				// exclude by attribute 1 brush->face->pShader->getName()
 				if ( filters->attribute == 1 ) {
 					if ( strstr( f->pShader->getName(), filters->string ) ) {
@@ -262,6 +308,7 @@ bool FilterBrush( brush_t *pb ){
 						break;
 					}
 				}
+
 				// exclude by attribute 2 brush->face->pShader->getFlags()
 				else if ( filters->attribute == 2 ) {
 					if ( f->pShader->getFlags() & filters->mask ) {
@@ -269,6 +316,7 @@ bool FilterBrush( brush_t *pb ){
 						break;
 					}
 				}
+
 				// quake2 - 5 == surface flags, 6 == content flags, 7 == !content flags
 				else if ( filters->attribute == 5 ) {
 					if ( f->texdef.flags && ( f->texdef.flags & filters->mask ) ) {
@@ -288,6 +336,7 @@ bool FilterBrush( brush_t *pb ){
 						break;
 					}
 				}
+
 				// idTech2 material filters
 				else if ( filters->attribute == 8 ) {
 					switch ( filters->exclude ) {
@@ -295,78 +344,96 @@ bool FilterBrush( brush_t *pb ){
 							if ( f->texdef.contents & (CONTENTS_WATER | CONTENTS_LAVA | CONTENTS_SLIME ) ) {
 								filterbrush = true;
 							}
+
 							if ( strstr( f->pShader->getName(), "water" ) ||
 								 strstr( f->pShader->getName(), "lava" )  ||
 								 strstr( f->pShader->getName(), "slime" ) ) {
 								filterbrush = true;
 							}
+
 							break;
 						case EXCLUDE_HINTSSKIPS:
 							if ( f->texdef.flags & (SURF_HINT | SURF_SKIP) ) {
 								filterbrush = true;
 							}
+
 							if ( strstr( f->pShader->getName(), "hint" ) ||
 								 strstr( f->pShader->getName(), "skip" ) ) {
 								filterbrush = true;
 							}
+
 							break;
 						case EXCLUDE_AREAPORTALS:
 							if ( f->texdef.contents & CONTENTS_AREAPORTAL ) {
 								filterbrush = true;
 							}
+
 							if (strstr( f->pShader->getName(), "common/occlude" ) ) {
 								filterbrush = true;
 							}
+
 							break;
 						case EXCLUDE_TRANSLUCENT:
 							if ( f->texdef.contents & CONTENTS_WINDOW ) {
 								filterbrush = true;
 							}
+
 							if ( f->texdef.flags & (SURF_TRANS33 | SURF_TRANS66) ) {
 								filterbrush = true;
 							}
+
 							if ( g_pGameDescription->mGameFile == "quetoo.game" ) {
 								if (f->texdef.flags & ( SURF_TRANS100 | SURF_ALPHA_TEST )) {
 									filterbrush = true;
 								}
 							}
+
 							if ( strstr( f->pShader->getName(), "glass" ) ||
 								 strstr( f->pShader->getName(), "window" ) ) {
 								filterbrush = true;
 							}
+
 							break;
 						case EXCLUDE_SKY:
 							if ( f->texdef.flags & SURF_SKY ) {
 								filterbrush = true;
 							}
+
 							if ( strstr( f->pShader->getName(), "sky" ) ) {
 								filterbrush = true;
 							}
+
 							break;
 						case EXCLUDE_MIST:
 							if ( f->texdef.contents & CONTENTS_MIST ) {
 								filterbrush = true;
 							}
+
 							break;
 						case EXCLUDE_ATMOSPHERIC:
 							if ( f->texdef.contents & CONTENTS_ATMOSPHERIC ) {
 								filterbrush = true;
 							}
+
 							if ( strstr( f->pShader->getName(), "common/fog" ) ) {
 								filterbrush = true;
 							}
+
 							if ( strstr( f->pShader->getName(), "common/dust" ) ) {
 								filterbrush = true;
 							}
+
 							break;
 
 					}
 				}
 			}
+
 			if ( !filterbrush ) {
 				break;
 			}
 		}
+
 		if ( filterbrush ) { // if no face is found that should not be excluded
 			return true; // exclude this brush
 		}
@@ -397,6 +464,7 @@ bool FilterBrush( brush_t *pb ){
 				}
 			}
 		}
+
 		if ( !drawpatch ) { // if a shader is found that should be excluded
 			return TRUE; // exclude this patch
 		}
@@ -426,9 +494,11 @@ bool FilterBrush( brush_t *pb ){
 				}
 			}
 		}
+
 		if ( !drawentity ) { // if an eclass property is found that should be excluded
 			return TRUE; // exclude this brush
 		}
 	}
+
 	return FALSE;
 }

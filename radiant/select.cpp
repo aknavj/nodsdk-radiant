@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: select.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -96,10 +122,12 @@ trace_t Test_Ray( vec3_t origin, vec3_t dir, int flags ){
 					break;
 				}
 			}
+
 			if ( !bFound ) {
 				pToSelect = reinterpret_cast<brush_t*>( array.GetAt( 0 ) );
 			}
 		}
+
 		if ( pToSelect ) {
 			face = Brush_Ray( origin, dir, pToSelect, &dist, flags );
 			t.dist = dist;
@@ -196,24 +224,29 @@ void Select_Brush( brush_t *brush, bool bComplete, bool bStatus ){
 	if ( g_qeglobals.d_select_count < 2 ) {
 		g_qeglobals.d_select_order[g_qeglobals.d_select_count] = brush;
 	}
+
 	g_qeglobals.d_select_count++;
 
 	e = brush->owner;
 	if ( e ) {
 		// select complete entity on first click
 		if ( e != world_entity && bComplete == true ) {
-			for ( b = selected_brushes.next ; b != &selected_brushes ; b = b->next )
+			for ( b = selected_brushes.next ; b != &selected_brushes ; b = b->next ) {
 				if ( b->owner == e ) {
 					goto singleselect;
 				}
+			}
+
 			for ( b = e->brushes.onext ; b != &e->brushes ; b = b->onext )
 			{
 				if ( b == brush ) { // make sure we add the actual selected brush last, mainly for cycle select
 					continue;
 				}
+
 				Brush_RemoveFromList( b );
 				Brush_AddToList( b, &selected_brushes );
 			}
+
 			Brush_RemoveFromList( brush );
 			Brush_AddToList( brush, &selected_brushes );
 		}
@@ -293,6 +326,7 @@ void Select_Ray( vec3_t origin, vec3_t dir, int flags ){
 				return;
 			}
 		}
+
 		lastTrace = t;
 
 		if ( Select_FaceInSelectedBrushes( t.face ) ) {
@@ -322,6 +356,7 @@ void Select_Ray( vec3_t origin, vec3_t dir, int flags ){
 					g_SelectedFaceBrushes.Add( t.brush );
 				}
 			}
+
 			g_qeglobals.d_select_mode = sel_facets_off;
 		}
 		else
@@ -349,6 +384,7 @@ void Select_Ray( vec3_t origin, vec3_t dir, int flags ){
 				g_qeglobals.d_select_mode = sel_facets_on;
 			}
 		}
+
 		UpdateSurfaceDialog();
 		Sys_UpdateWindows( W_ALL );
 		//g_qeglobals.d_select_mode = sel_brush;
@@ -380,6 +416,7 @@ void Select_Ray( vec3_t origin, vec3_t dir, int flags ){
 		g_qeglobals.d_select_mode = sel_brush_on;
 		Select_Brush( t.brush, g_PrefsDlg.m_nCamDragMultiSelect == 1 ? Sys_AltDown() : !Sys_AltDown() );
 	}
+
 	UpdateSurfaceDialog();
 	Sys_UpdateWindows( W_ALL );
 }
@@ -402,6 +439,7 @@ void Select_Delete( void ){
 		if ( brush->patchBrush ) {
 			Patch_Delete( brush->pPatch );
 		}
+
 		e = brush->owner;
 		Brush_Free( brush );
 		// remove if no brushes
@@ -455,6 +493,7 @@ void Select_Deselect( bool bDeselectFaces ){
 			g_ptrSelectedFaces.RemoveAll();
 			g_ptrSelectedFaceBrushes.RemoveAll();
 		}
+
 		PerformFiltering();
 		UpdateSurfaceDialog();
 		Sys_UpdateWindows( W_ALL );
@@ -495,8 +534,9 @@ void Select_Move( vec3_t delta, bool bSnap ){
 	brush_t *b;
 
 	// actually move the selected brushes
-	for ( b = selected_brushes.next ; b != &selected_brushes ; b = b->next )
+	for ( b = selected_brushes.next ; b != &selected_brushes ; b = b->next ) {
 		Brush_Move( b, delta, bSnap );
+	}
 
 	vec3_t vMin, vMax;
 	Select_GetBounds( vMin, vMax );
@@ -526,6 +566,7 @@ void Select_NudgePoint( vec3_t delta, qboolean bSnap ){
 		{
 			success &= (qboolean)Brush_MoveVertex( b, g_qeglobals.d_move_points[0], delta, end, bSnap );
 		}
+
 		if ( success ) {
 			VectorCopy( end, g_qeglobals.d_move_points[0] );
 		}
@@ -598,18 +639,22 @@ void WINAPI Select_SetTexture( texdef_t *texdef, brushprimit_texdef_t *brushprim
 			Brush_Build( selBrush, bFitScale );
 			Undo_EndBrush( selBrush );
 		}
+
 		Undo_End();
 	}
 	else if ( selected_brushes.next != &selected_brushes ) {
 		Undo_Start( "set brush textures" );
-		for ( b = selected_brushes.next ; b != &selected_brushes ; b = b->next )
+		for ( b = selected_brushes.next ; b != &selected_brushes ; b = b->next ) {
 			if ( !b->owner->eclass->fixedsize ) {
 				Undo_AddBrush( b );
 				Brush_SetTexture( b, texdef, brushprimit_texdef, bFitScale, static_cast<IPluginTexdef *>( pPlugTexdef ) );
 				Undo_EndBrush( b );
 			}
+		}
+
 		Undo_End();
 	}
+
 	//++timo FIXME: not necessary in every cases, write a message defering / move one level up
 	Sys_UpdateWindows( W_ALL );
 }
@@ -641,6 +686,7 @@ void Select_GetBounds( vec3_t mins, vec3_t maxs ){
 				if ( b->owner->origin[i] < mins[i] ) {
 					mins[i] = b->owner->origin[i];
 				}
+
 				if ( b->owner->origin[i] > maxs[i] ) {
 					maxs[i] = b->owner->origin[i];
 				}
@@ -653,6 +699,7 @@ void Select_GetBounds( vec3_t mins, vec3_t maxs ){
 				if ( b->mins[i] < mins[i] ) {
 					mins[i] = b->mins[i];
 				}
+
 				if ( b->maxs[i] > maxs[i] ) {
 					maxs[i] = b->maxs[i];
 				}
@@ -665,8 +712,9 @@ void Select_GetTrueMid( vec3_t mid ){
 	vec3_t mins, maxs;
 	Select_GetBounds( mins, maxs );
 
-	for ( int i = 0 ; i < 3 ; i++ )
+	for ( int i = 0 ; i < 3 ; i++ ) {
 		mid[i] = ( mins[i] + ( ( maxs[i] - mins[i] ) / 2 ) );
+}
 }
 
 void Select_GetMid( vec3_t mid ){
@@ -680,8 +728,9 @@ void Select_GetMid( vec3_t mid ){
 
 	Select_GetBounds( mins, maxs );
 
-	for ( i = 0 ; i < 3 ; i++ )
+	for ( i = 0 ; i < 3 ; i++ ) {
 		mid[i] = g_qeglobals.d_gridsize * floor( ( ( mins[i] + maxs[i] ) * 0.5 ) / g_qeglobals.d_gridsize );
+}
 }
 
 vec3_t select_origin;
@@ -705,7 +754,7 @@ void Select_ApplyMatrix( bool bSnap, bool bRotation, int nAxis, float fDeg ){ //
 	{
 		if ( b->owner->eclass->fixedsize ) {
 			entity_t *entity = b->owner;
-			if ( bRotation && ModelTransform_IsEntity( ValueForKey( entity, "classname" ) ) ) {
+			if ( bRotation && ModelTransform_IsEntity( ValueForKey( entity, "classname" ), ValueForKey( entity, "model" ) ) ) {
 				if ( rotatedModels.insert( entity ).second ) {
 					float angles[3];
 					if ( entity->model.pEdit == NULL
@@ -714,19 +763,23 @@ void Select_ApplyMatrix( bool bSnap, bool bRotation, int nAxis, float fDeg ){ //
 									 ValueForKey( entity, "model" ) );
 						continue;
 					}
+
 					char value[128];
 					sprintf( value, "%.9g %.9g %.9g", angles[0], angles[1], angles[2] );
 					DeleteKey( entity, "angle" );
 					SetKeyValue( entity, "angles", value );
 					modelsChanged = true;
 				}
+
 				continue;
 			}
+
 			VectorCopy( b->owner->origin, tmporigin );
 			// transform the origin point
 			VectorSubtract( b->owner->origin, select_origin, temp );
-			for ( j = 0 ; j < 3 ; j++ )
+			for ( j = 0 ; j < 3 ; j++ ) {
 				b->owner->origin[j] = DotProduct( temp, select_matrix[j] ) + select_origin[j];
+			}
 
 			// update the origin key
 			char text[64];
@@ -739,9 +792,11 @@ void Select_ApplyMatrix( bool bSnap, bool bRotation, int nAxis, float fDeg ){ //
 			for ( f = b->brush_faces ; f ; f = f->next )
 			{
 				// move fixedsize bbox to new origin
-				for ( i = 0 ; i < 3 ; i++ )
+				for ( i = 0 ; i < 3 ; i++ ) {
 					VectorAdd( f->planepts[i], temp, f->planepts[i] );
 			}
+			}
+
 			Brush_Build( b, bSnap,true,false,false ); // don't filter
 
 		}
@@ -750,6 +805,7 @@ void Select_ApplyMatrix( bool bSnap, bool bRotation, int nAxis, float fDeg ){ //
 				// invert patch if this is a mirroring operation, unless points are selected or bendmode is active
 				patchInvert( b->pPatch );
 			}
+
 			// NOTE: does not clamp points to integers
 			Patch_ApplyMatrix( b->pPatch, select_origin, select_matrix, false );
 		}
@@ -766,18 +822,22 @@ void Select_ApplyMatrix( bool bSnap, bool bRotation, int nAxis, float fDeg ){ //
 				for ( i = 0 ; i < 3 ; i++ )
 				{
 					VectorSubtract( f->planepts[i], select_origin, temp );
-					for ( j = 0 ; j < 3 ; j++ )
+					for ( j = 0 ; j < 3 ; j++ ) {
 						f->planepts[i][j] = DotProduct( temp, select_matrix[j] ) + select_origin[j];
 				}
+				}
+
 				if ( select_fliporder ) {
 					VectorCopy( f->planepts[0], temp );
 					VectorCopy( f->planepts[2], f->planepts[0] );
 					VectorCopy( temp, f->planepts[2] );
 				}
 			}
+
 			Brush_Build( b, bSnap,true,false,false ); // don't filter
 		}
 	}
+
 	if ( modelsChanged ) {
 		Sys_MarkMapModified();
 		if ( EntWidgets[EntProps] != NULL ) {
@@ -984,6 +1044,7 @@ void RotateTextures( int nAxis, float fDeg, vec3_t vOrigin ){
 				RotateFaceTexture( f, nAxis, fDeg );
 			}
 		}
+
 		Brush_Build( b, false,true,false,false ); // don't filter
 	}
 }
@@ -1012,6 +1073,7 @@ void Select_FlipAxis( int axis ){
 		VectorCopy( vec3_origin, select_matrix[i] );
 		select_matrix[i][i] = 1;
 	}
+
 	select_matrix[axis][axis] = -1;
 	select_fliporder = true;
 
@@ -1028,6 +1090,7 @@ void Select_FlipAxis( int axis ){
 			Sys_FPrintf( SYS_WRN, "WARNING: regular texturing doesn't have texture lock on flipping operations\n" );
 		}
 	}
+
 	// geometric transformation
 	Select_ApplyMatrix( true, false, 0, 0 );
 	Sys_UpdateWindows( W_ALL );
@@ -1038,6 +1101,7 @@ void Select_Scale( float x, float y, float z ){
 	if ( x == 1 && y == 1 && z == 1 ) {
 		return;
 	}
+
 	Select_GetMid( select_origin );
 	const float factors[3] = { x, y, z };
 	std::set<entity_t*> scaledModels;
@@ -1046,7 +1110,12 @@ void Select_Scale( float x, float y, float z ){
 	{
 		if ( b->owner->eclass->fixedsize ) {
 			entity_t *entity = b->owner;
-			if ( ModelTransform_IsEntity( ValueForKey( entity, "classname" ) )
+			if ( ModelTransform_IsNativeEntity( ValueForKey( entity, "classname" ) ) ) {
+				Sys_FPrintf( SYS_WRN, "WARNING: native NSD entity scaling is not supported\n" );
+				continue;
+			}
+
+			if ( ModelTransform_IsEntity( ValueForKey( entity, "classname" ), ValueForKey( entity, "model" ) )
 				 && scaledModels.insert( entity ).second ) {
 				float scale[3];
 				if ( !ModelScale_Scaled( ValueForKey( entity, "modelscale" ),
@@ -1055,6 +1124,7 @@ void Select_Scale( float x, float y, float z ){
 								 ValueForKey( entity, "model" ) );
 					continue;
 				}
+
 				char value[128];
 				if ( scale[0] == scale[1] && scale[1] == scale[2] ) {
 					sprintf( value, "%.9g", scale[0] );
@@ -1066,10 +1136,13 @@ void Select_Scale( float x, float y, float z ){
 					SetKeyValue( entity, "modelscale_vec", value );
 					DeleteKey( entity, "modelscale" );
 				}
+
 				modelsChanged = true;
 			}
+
 			continue;
 		}
+
 		for ( face_t* f = b->brush_faces ; f ; f = f->next )
 		{
 			for ( int i = 0 ; i < 3 ; i++ )
@@ -1086,6 +1159,7 @@ void Select_Scale( float x, float y, float z ){
 				f->planepts[i][2] += select_origin[2];
 			}
 		}
+
 		Brush_Build( b, false,true,false,false ); // don't filter
 		if ( b->patchBrush ) {
 			vec3_t v;
@@ -1095,6 +1169,7 @@ void Select_Scale( float x, float y, float z ){
 			Patch_Scale( b->pPatch, select_origin, v );
 		}
 	}
+
 	if ( modelsChanged ) {
 		Sys_MarkMapModified();
 		if ( EntWidgets[EntProps] != NULL ) {
@@ -1111,6 +1186,7 @@ void Select_RotateAxis( int axis, float deg, bool bPaint, bool bMouse ){
 		Sys_FPrintf( SYS_WRN, "WARNING: rotation requires a valid X/Y/Z axis and a finite angle\n" );
 		return;
 	}
+
 	if ( deg == 0 ) {
 		return;
 	}
@@ -1183,6 +1259,7 @@ void Select_RotateAxis( int axis, float deg, bool bPaint, bool bMouse ){
 			RotateTextures( axis, deg * -1, select_origin );
 		}
 	}
+
 	// geometric transformation
 	Select_ApplyMatrix( !bMouse, true, axis, deg ); //, false);
 
@@ -1308,10 +1385,11 @@ void Select_Touching( void ){
 			continue;
 		}
 
-		for ( i = 0 ; i < 3 ; i++ )
+		for ( i = 0 ; i < 3 ; i++ ) {
 			if ( b->mins[i] > maxs[i] + 1 || b->maxs[i] < mins[i] - 1 ) {
 				break;
 			}
+		}
 
 		if ( i == 3 ) {
 			Brush_RemoveFromList( b );
@@ -1349,10 +1427,12 @@ void Select_Inside( void ){
 			continue;
 		}
 
-		for ( i = 0 ; i < 3 ; i++ )
+		for ( i = 0 ; i < 3 ; i++ ) {
 			if ( b->maxs[i] > maxs[i] || b->mins[i] < mins[i] ) {
 				break;
 			}
+		}
+
 		if ( i == 3 ) {
 			Brush_RemoveFromList( b );
 			Brush_AddToList( b, &selected_brushes );
@@ -1404,6 +1484,7 @@ void Select_Ungroup( void ){
 			Entity_UnlinkBrush( b );
 			Entity_LinkBrush( world_entity, b );
 		}
+
 		Entity_Free( e );
 		numselectedgroups++;
 	}
@@ -1412,6 +1493,7 @@ void Select_Ungroup( void ){
 		Sys_Printf( "No grouped entities selected.\n" );
 		return;
 	}
+
 	Sys_Printf( "Ungrouped %d entit%s.\n", numselectedgroups, ( numselectedgroups == 1 ) ? "y" : "ies" );
 	Sys_UpdateWindows( W_ALL );
 }
@@ -1434,6 +1516,7 @@ void Select_GroupEntity( entity_t* group ){
 		if ( b->owner->eclass->fixedsize ) {
 			continue;
 		}
+
 		e = b->owner;
 		Entity_UnlinkBrush( b );
 		Entity_LinkBrush( group, b );
@@ -1471,6 +1554,7 @@ void Select_MergeEntity(){
 			//Brush_AddToList(b, &active_brushes);
 			count++;
 		}
+
 		Sys_Printf( "Merged %d brushes into %s entity\n", count, ValueForKey( e, "classname" ) );
 	}
 }
@@ -1495,10 +1579,13 @@ void Select_MakeStructural( void ){
 
 	for ( b = selected_brushes.next ; b != &selected_brushes ; b = b->next )
 	{
-		for ( f = b->brush_faces ; f ; f = f->next )
+		for ( f = b->brush_faces ; f ; f = f->next ) {
 			f->texdef.contents &= ~CONTENTS_DETAIL;
+		}
+
 		b->bFiltered = FilterBrush( b );
 	}
+
 	Select_Deselect();
 	Sys_UpdateWindows( W_ALL );
 }
@@ -1509,10 +1596,13 @@ void Select_MakeDetail( void ){
 
 	for ( b = selected_brushes.next ; b != &selected_brushes ; b = b->next )
 	{
-		for ( f = b->brush_faces ; f ; f = f->next )
+		for ( f = b->brush_faces ; f ; f = f->next ) {
 			f->texdef.contents |= CONTENTS_DETAIL;
+		}
+
 		b->bFiltered = FilterBrush( b );
 	}
+
 	Select_Deselect();
 	Sys_UpdateWindows( W_ALL );
 }
@@ -1537,6 +1627,7 @@ void ShiftTextureRelative_Camera( face_t *f, int x, int y ){
 	{
 		VectorAdd( C,f->face_winding->points[i],C );
 	}
+
 	VectorScale( C,1.0 / f->face_winding->numpoints,C );
 
 	pCam = g_pParentWnd->GetCamWnd();
@@ -1561,9 +1652,11 @@ void ShiftTextureRelative_Camera( face_t *f, int x, int y ){
 		// moving right/left
 		XY[axis[0]] += sgn[0] * x;
 	}
+
 	if ( y != 0 ) {
 		XY[axis[1]] += sgn[1] * y;
 	}
+
 	// we worked out a move along vecS vecT, and we now it's geometric amplitude
 	// apply it
 	ShiftTextureRelative_BrushPrimit( f, XY[0], XY[1] );
@@ -1592,6 +1685,7 @@ void Select_ShiftTexture( int x, int y ){
 				f->texdef.shift[1] += y;
 			}
 		}
+
 		Brush_Build( b,true,true,false,false ); // don't filter
 		if ( b->patchBrush ) {
 			Patch_ShiftTexture( b->pPatch, x, y );
@@ -1611,6 +1705,7 @@ void Select_ShiftTexture( int x, int y ){
 				selFace->texdef.shift[0] += x;
 				selFace->texdef.shift[1] += y;
 			}
+
 			Brush_Build( selBrush,true,true,false,false ); // don't filter
 		}
 	}
@@ -1657,6 +1752,7 @@ void Select_ScaleTexture( float x, float y ){
 				f->texdef.scale[1] += y;
 			}
 		}
+
 		Brush_Build( b,true,true,false,false ); // don't filter
 		if ( b->patchBrush ) {
 			Patch_ScaleTexture( b->pPatch, x, y );
@@ -1685,6 +1781,7 @@ void Select_ScaleTexture( float x, float y ){
 				selFace->texdef.scale[0] += x;
 				selFace->texdef.scale[1] += y;
 			}
+
 			Brush_Build( selBrush,true,true,false,false ); // don't filter
 		}
 	}
@@ -1729,6 +1826,7 @@ void Select_RotateTexture( int amt ){
 				f->texdef.rotate = static_cast<int>( f->texdef.rotate ) % 360;
 			}
 		}
+
 		Brush_Build( b,true,true,false,false ); // don't filter
 		if ( b->patchBrush ) {
 			//Patch_RotateTexture(b->nPatchID, amt);
@@ -1757,6 +1855,7 @@ void Select_RotateTexture( int amt ){
 				selFace->texdef.rotate += amt;
 				selFace->texdef.rotate = static_cast<int>( selFace->texdef.rotate ) % 360;
 			}
+
 			Brush_Build( selBrush,true,true,false,false ); // don't filter
 		}
 	}
@@ -1874,6 +1973,7 @@ void Select_AllOfType(){
 				}
 			}
 		}
+
 		Sys_UpdateWindows( W_ALL );
 		return;
 	}
@@ -1908,6 +2008,7 @@ void Select_AllOfType(){
 								doIt = false;
 							}
 						}
+
 						if ( doIt ) {
 							Brush_RemoveFromList( b );
 							Brush_AddToList( b, &selected_brushes );
@@ -1917,6 +2018,7 @@ void Select_AllOfType(){
 			}
 		}
 	}
+
 	Sys_UpdateWindows( W_ALL );
 
 }
@@ -1961,6 +2063,7 @@ void Select_Hide(){
 		b->hiddenBrush = true;
 		b->bFiltered = true;
 	}
+
 	Sys_UpdateWindows( W_ALL );
 }
 
@@ -1973,6 +2076,7 @@ void Select_ShowAllHidden(){
 			b->bFiltered = FilterBrush( b );
 		}
 	}
+
 	for ( b = active_brushes.next ; b && b != &active_brushes ; b = b->next )
 	{
 		if ( b->hiddenBrush ) {
@@ -1980,6 +2084,7 @@ void Select_ShowAllHidden(){
 			b->bFiltered = FilterBrush( b );
 		}
 	}
+
 	Sys_UpdateWindows( W_ALL );
 }
 
@@ -2007,6 +2112,7 @@ void Select_Invert( void ){
 		active_brushes.next = &active_brushes;
 		active_brushes.prev = &active_brushes;
 	}
+
 	if ( next != &active_brushes ) {
 		selected_brushes.next = next;
 		selected_brushes.prev = prev;

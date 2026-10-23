@@ -1,3 +1,29 @@
+/*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: model_transforms.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
 #include "../radiant/modeltransform.h"
 
 #include <assert.h>
@@ -55,12 +81,55 @@ static void checkRotation( const float euler[3], int axis, float degrees ){
 	++rotationCases;
 }
 
+static void checkNativeTransform(){
+	const float origin[3] = { 10, 20, 30 }, baseScale[3] = { 32, 32, 32 };
+	float translated[3], scaled[3];
+	assert( ModelTransform_Native( "", "", origin, baseScale, translated, scaled ) );
+	assert( translated[0] == 10 && translated[1] == 20 && translated[2] == 30 && scaled[0] == 32 );
+	for ( int sign = -1; sign <= 1; sign += 2 ) {
+		assert( ModelTransform_Native( sign < 0 ? "-0.75" : "0.75", "5 -3 7",
+									  origin, baseScale, translated, scaled ) );
+		assert( translated[0] == 15 && translated[1] == 17 && translated[2] == 37 );
+		assert( scaled[0] == sign * 0.75f && scaled[1] == scaled[0] && scaled[2] == scaled[0] );
+		m4x4_t transform;
+		const vec3_t rotation = { 0, 0, 90 }, pivot = { 0, 0, 0 };
+		m4x4_identity( transform );
+		m4x4_pivoted_transform_by_vec3( transform, translated, rotation, eXYZ, scaled, pivot );
+		assert( transform[12] == 15 && transform[13] == 17 && transform[14] == 37 );
+		aabb_t source, bounds;
+		VectorClear( source.origin );
+		VectorSet( source.extents, 2, 4, 6 );
+		aabb_for_transformed_aabb( &bounds, &source, transform );
+		for ( int i = 0; i < 3; ++i ) assert( fabs( bounds.origin[i] - translated[i] ) < 0.00001 );
+		assert( fabs( bounds.extents[0] - 3 ) < 0.00001 );
+		assert( fabs( bounds.extents[1] - 1.5f ) < 0.00001 );
+		assert( fabs( bounds.extents[2] - 4.5f ) < 0.00001 );
+	}
+	const char *invalid[] = { "nan", "inf", "1e100", "1e-100", "1e-1000", "0.75 junk" };
+	for ( unsigned int i = 0; i < sizeof( invalid ) / sizeof( invalid[0] ); ++i ) {
+		assert( !ModelTransform_Native( invalid[i], "5 -3 7", origin, baseScale, translated, scaled ) );
+		assert( translated[0] == 15 && scaled[0] == 0.75f );
+	}
+	assert( !ModelTransform_Native( "1", "5 6", origin, baseScale, translated, scaled ) );
+	assert( !ModelTransform_Native( "1", "0 nan 0", origin, baseScale, translated, scaled ) );
+	const float large[3] = { FLT_MAX, 0, 0 };
+	assert( !ModelTransform_Native( "1", "3.4028234663852886e38 0 0", large, baseScale, translated, scaled ) );
+	assert( translated[0] == 15 && scaled[0] == 0.75f );
+}
+
 int main(){
+	checkNativeTransform();
 	assert( ModelTransform_IsEntity( "misc_model" ) );
 	assert( ModelTransform_IsEntity( "misc_gamemodel" ) );
 	assert( ModelTransform_IsEntity( "model_static" ) );
 	assert( !ModelTransform_IsEntity( "ghost" ) );
 	assert( !ModelTransform_IsEntity( "worldspawn" ) );
+	assert( ModelTransform_IsNativeEntity( "nod_nsd_entity" ) );
+	assert( ModelTransform_IsNativeEntity( "nod_nsd_type_Marine" ) );
+	assert( !ModelTransform_IsNativeEntity( "nod_nsd_type_" ) );
+	assert( !ModelTransform_IsNativeEntity( "nod_nsd_type" ) );
+	assert( ModelTransform_IsEntity( "nod_nsd_type_Marine", "3D/Models/marine.nod" ) );
+	assert( !ModelTransform_IsEntity( "nod_nsd_type_Marine", "" ) );
 	check( "", "", 2, 3, 4, 2, 3, 4 );
 	check( "32", "", 1.5f, 1.5f, 1.5f, 48, 48, 48 );
 	check( "32", "", 1.1f, 1.1f, 1.1f, 35.2f, 35.2f, 35.2f );

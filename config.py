@@ -386,6 +386,8 @@ class Config:
             # copy all the dependent runtime data to the install directory
             srcdir = os.path.dirname( backup_cwd )
             for dll in [
+                '%s/bin/gspawn-win32-helper.exe' % GTK_PREFIX,
+                '%s/bin/gspawn-win32-helper-console.exe' % GTK_PREFIX,
                 '%s/bin/freetype6.dll' % GTK_PREFIX,
                 '%s/bin/intl.dll' % GTK_PREFIX,
                 '%s/bin/libasprintf-0.dll' % GTK_PREFIX,
@@ -430,6 +432,8 @@ class Config:
             except:
                 pass # assume 'already exists'
             for x64_dll in [
+                '%s/bin/gspawn-win64-helper.exe' % GTK64_PREFIX,
+                '%s/bin/gspawn-win64-helper-console.exe' % GTK64_PREFIX,
                 '%s/bin/libpng14-14.dll' % GTK64_PREFIX,
                 '%s/bin/libglib-2.0-0.dll' % GTK64_PREFIX,
                 '%s/bin/libintl-8.dll' % GTK64_PREFIX,

@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: winding.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -51,6 +77,7 @@ int Plane_Equal( plane_t *a, plane_t *b, int flip ){
 		normal[2] = b->normal[2];
 		dist = b->dist;
 	}
+
 	if (
 		fabs( a->normal[0] - normal[0] ) < NORMAL_EPSILON
 		&& fabs( a->normal[1] - normal[1] ) < NORMAL_EPSILON
@@ -58,6 +85,7 @@ int Plane_Equal( plane_t *a, plane_t *b, int flip ){
 		&& fabs( a->dist - dist ) < DIST_EPSILON ) {
 		return true;
 	}
+
 	return false;
 }
 
@@ -76,6 +104,7 @@ int Plane_FromPoints( vec3_t p1, vec3_t p2, vec3_t p3, plane_t *plane ){
 	if ( VectorNormalize( plane->normal, plane->normal ) < 0.1 ) {
 		return false;
 	}
+
 	plane->dist = DotProduct( p1, plane->normal );
 	return true;
 }
@@ -94,6 +123,7 @@ int Point_Equal( vec3_t p1, vec3_t p2, float epsilon ){
 			return false;
 		}
 	}
+
 	return true;
 }
 
@@ -125,6 +155,7 @@ winding_t *Winding_BaseForPlane( plane_t *p ){
 			max = v;
 		}
 	}
+
 	if ( x == -1 ) {
 		Error( "Winding_BaseForPlane: no axis found" );
 	}
@@ -232,6 +263,7 @@ winding_t *Winding_Reverse( winding_t *w ){
 	{
 		VectorCopy( w->points[w->numpoints - 1 - i], c->points[i] );
 	}
+
 	c->numpoints = w->numpoints;
 	return c;
 }
@@ -249,6 +281,7 @@ void Winding_RemovePoint( winding_t *w, int point ){
 	if ( point < w->numpoints - 1 ) {
 		memmove( &w->points[point], &w->points[point + 1], (size_t)( (winding_t *)0 )->points[w->numpoints - point - 1] );
 	}
+
 	w->numpoints--;
 }
 
@@ -264,9 +297,11 @@ winding_t *Winding_InsertPoint( winding_t *w, vec3_t point, int spot ){
 	if ( spot > w->numpoints ) {
 		Error( "Winding_InsertPoint: spot > w->numpoints" );
 	} //end if
+
 	if ( spot < 0 ) {
 		Error( "Winding_InsertPoint: spot < 0" );
 	} //end if
+
 	neww = Winding_Alloc( w->numpoints + 1 );
 	neww->numpoints = w->numpoints + 1;
 	for ( i = 0, j = 0; i < neww->numpoints; i++ )
@@ -280,6 +315,7 @@ winding_t *Winding_InsertPoint( winding_t *w, vec3_t point, int spot ){
 			j++;
 		}
 	}
+
 	return neww;
 }
 
@@ -308,6 +344,7 @@ int Winding_IsTiny( winding_t *w ){
 			}
 		}
 	}
+
 	return true;
 }
 
@@ -321,11 +358,13 @@ int Winding_IsHuge( winding_t *w ){
 
 	for ( i = 0 ; i < w->numpoints ; i++ )
 	{
-		for ( j = 0 ; j < 3 ; j++ )
+		for ( j = 0 ; j < 3 ; j++ ) {
 			if ( w->points[i][j] < -BOGUS_RANGE + 1 || w->points[i][j] > BOGUS_RANGE - 1 ) {
 				return true;
 			}
 	}
+	}
+
 	return false;
 }
 
@@ -352,6 +391,7 @@ int Winding_PlanesConcave( winding_t *w1, winding_t *w2,
 			return true;
 		}
 	}
+
 	// check if one of the points of winding 2 is at the back of the plane of winding 1
 	for ( i = 0; i < w2->numpoints; i++ )
 	{
@@ -373,7 +413,7 @@ int Winding_PlanesConcave( winding_t *w1, winding_t *w2,
    it will be clipped away.
    ==================
  */
-winding_t *Winding_Clip( winding_t *in, plane_t *split, qboolean keepon ){
+winding_t *Winding_Clip( winding_t *in, plane_t *split, qboolean keepon, vec_t epsilon ){
 	vec_t dists[MAX_POINTS_ON_WINDING];
 	int sides[MAX_POINTS_ON_WINDING];
 	int counts[3];
@@ -392,18 +432,20 @@ winding_t *Winding_Clip( winding_t *in, plane_t *split, qboolean keepon ){
 		dot = DotProduct( in->points[i], split->normal );
 		dot -= split->dist;
 		dists[i] = dot;
-		if ( dot > ON_EPSILON ) {
+		if ( dot > epsilon ) {
 			sides[i] = SIDE_FRONT;
 		}
-		else if ( dot < -ON_EPSILON ) {
+		else if ( dot < -epsilon ) {
 			sides[i] = SIDE_BACK;
 		}
 		else
 		{
 			sides[i] = SIDE_ON;
 		}
+
 		counts[sides[i]]++;
 	}
+
 	sides[i] = sides[0];
 	dists[i] = dists[0];
 
@@ -415,6 +457,7 @@ winding_t *Winding_Clip( winding_t *in, plane_t *split, qboolean keepon ){
 		Winding_Free( in );
 		return NULL;
 	}
+
 	if ( !counts[1] ) {
 		return in;
 	}
@@ -511,8 +554,10 @@ void Winding_SplitEpsilon( winding_t *in, vec3_t normal, double dist,
 		{
 			sides[i] = SIDE_ON;
 		}
+
 		counts[sides[i]]++;
 	}
+
 	sides[i] = sides[0];
 	dists[i] = dists[0];
 
@@ -522,6 +567,7 @@ void Winding_SplitEpsilon( winding_t *in, vec3_t normal, double dist,
 		*back = Winding_Clone( in );
 		return;
 	}
+
 	if ( !counts[1] ) {
 		*front = Winding_Clone( in );
 		return;
@@ -549,6 +595,7 @@ void Winding_SplitEpsilon( winding_t *in, vec3_t normal, double dist,
 			VectorCopy( p1, f->points[f->numpoints] );
 			f->numpoints++;
 		}
+
 		if ( sides[i] == SIDE_BACK ) {
 			VectorCopy( p1, b->points[b->numpoints] );
 			b->numpoints++;
@@ -585,6 +632,7 @@ void Winding_SplitEpsilon( winding_t *in, vec3_t normal, double dist,
 	if ( f->numpoints > maxpts || b->numpoints > maxpts ) {
 		Error( "Winding_Clip: points exceeded estimate" );
 	}
+
 	if ( f->numpoints > MAX_POINTS_ON_WINDING || b->numpoints > MAX_POINTS_ON_WINDING ) {
 		Error( "Winding_Clip: MAX_POINTS_ON_WINDING" );
 	}
@@ -633,14 +681,17 @@ winding_t *Winding_TryMerge( winding_t *f1, winding_t *f2, vec3_t planenormal, i
 				if ( fabs( p1[k] - p4[k] ) > 0.1 ) { //EQUAL_EPSILON) //ME
 					break;
 				}
+
 				if ( fabs( p2[k] - p3[k] ) > 0.1 ) { //EQUAL_EPSILON) //ME
 					break;
 				}
 			} //end for
+
 			if ( k == 3 ) {
 				break;
 			}
 		} //end for
+
 		if ( j < f2->numpoints ) {
 			break;
 		}
@@ -650,6 +701,7 @@ winding_t *Winding_TryMerge( winding_t *f1, winding_t *f2, vec3_t planenormal, i
 		return NULL;            // no matching edges
 
 	}
+
 	//
 	// check slope of connected lines
 	// if the slopes are colinear, the point can be removed
@@ -665,6 +717,7 @@ winding_t *Winding_TryMerge( winding_t *f1, winding_t *f2, vec3_t planenormal, i
 	if ( dot > CONTINUOUS_EPSILON ) {
 		return NULL;            // not a convex polygon
 	}
+
 	keep1 = (qboolean)( dot < -CONTINUOUS_EPSILON );
 
 	back = f1->points[( i + 2 ) % f1->numpoints];
@@ -678,6 +731,7 @@ winding_t *Winding_TryMerge( winding_t *f1, winding_t *f2, vec3_t planenormal, i
 	if ( dot > CONTINUOUS_EPSILON ) {
 		return NULL;            // not a convex polygon
 	}
+
 	keep2 = (qboolean)( dot < -CONTINUOUS_EPSILON );
 
 	//
@@ -702,6 +756,7 @@ winding_t *Winding_TryMerge( winding_t *f1, winding_t *f2, vec3_t planenormal, i
 		if ( !keep && l == ( j + 1 ) % f2->numpoints && !keep1 ) {
 			continue;
 		}
+
 		VectorCopy( f2->points[l], newf->points[newf->numpoints] );
 		newf->numpoints++;
 	}
@@ -727,6 +782,7 @@ void Winding_Plane( winding_t *w, vec3_t normal, double *dist ){
 			break;
 		}
 	}
+
 	CrossProduct( v2, v1, normal );
 	VectorNormalize( normal, normal );
 	*dist = DotProduct( w->points[0], normal );
@@ -750,6 +806,7 @@ float Winding_Area( winding_t *w ){
 		CrossProduct( d1, d2, cross );
 		total += 0.5 * VectorLength( cross );
 	}
+
 	return total;
 }
 
@@ -773,6 +830,7 @@ void Winding_Bounds( winding_t *w, vec3_t mins, vec3_t maxs ){
 			if ( v < mins[j] ) {
 				mins[j] = v;
 			}
+
 			if ( v > maxs[j] ) {
 				maxs[j] = v;
 			}
@@ -801,6 +859,7 @@ int Winding_PointInside( winding_t *w, plane_t *plane, vec3_t point, float epsil
 			return false;
 		}
 	}
+
 	return true;
 }
 
@@ -819,9 +878,11 @@ int Winding_VectorIntersect( winding_t *w, plane_t *plane, vec3_t p1, vec3_t p2,
 	if ( front < -epsilon && back < -epsilon ) {
 		return false;
 	}
+
 	if ( front > epsilon && back > epsilon ) {
 		return false;
 	}
+
 	//get point of intersection with winding plane
 	if ( fabs( front - back ) < 0.001 ) {
 		VectorCopy( p2, mid );
@@ -833,5 +894,6 @@ int Winding_VectorIntersect( winding_t *w, plane_t *plane, vec3_t p1, vec3_t p2,
 		mid[1] = p1[1] + ( p2[1] - p1[1] ) * frac;
 		mid[2] = p1[2] + ( p2[2] - p1[2] ) * frac;
 	}
+
 	return Winding_PointInside( w, plane, mid, epsilon );
 }

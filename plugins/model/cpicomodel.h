@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: cpicomodel.h
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -52,6 +78,7 @@ void load( const char *name, const int frame );
 void IncRef(){
 	++m_refcount;
 }
+
 void DecRef(){
 	if ( --m_refcount == 0 ) {
 		delete this;
@@ -66,7 +93,7 @@ void Reload( void );
 void Draw( int state, std::vector<IShader*> shaders, int rflags ) const;
 //IRender
 virtual void Draw( int state, int rflags ) const;
-virtual const bool IsModelNotNull() const { return true; }
+virtual const bool IsModelNotNull() const { return m_pModel != NULL; }
 virtual const aabb_t *GetAABB() const { return &m_BBox; }
 
 //ISelect

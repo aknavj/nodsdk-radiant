@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: map.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -20,6 +46,7 @@
  */
 
 #include "stdafx.h"
+#include "nodclass.h"
 #include <glib/gi18n.h>
 #include <string.h>
 #if defined( __linux__ ) || defined( __BSD__ ) || defined( __APPLE__ )
@@ -29,6 +56,13 @@
 #include "mainframe.h"
 #include "gtkmisc.h"
 #include "filters.h"
+#include "nodbounds.h"
+#include "nodview.h"
+#include "nodviewstorage.h"
+
+static bool nodImportingMap = false;
+static bool nodSidecarRejected = false;
+static std::vector<int> nodImportedIds, nodExportedIds;
 
 extern MainFrame* g_pParentWnd;
 
@@ -87,6 +121,7 @@ void Map_SaveBetween( void ){
 		g_bRestoreBetween = true;
 		g_pParentWnd->ActiveXY()->Copy();
 	}
+
 	return;
 }
 
@@ -106,9 +141,11 @@ bool CheckForTinyBrush( brush_t* b, int n, float fSize ){
 			bTiny = true;
 		}
 	}
+
 	if ( bTiny ) {
 		Sys_Printf( "Possible problem brush (too small) #%i ", n );
 	}
+
 	return bTiny;
 }
 
@@ -126,11 +163,17 @@ void Map_BuildBrushData( void ){
 	{
 		next = b->next;
 		Brush_Build( b, true, false, false );
-		if ( !b->brush_faces || ( g_PrefsDlg.m_bCleanTiny && CheckForTinyBrush( b, n++, g_PrefsDlg.m_fTinySize ) ) ) {
+		const bool nativeGeometry = b->owner && ( ( b->owner->eclass && NodClass_Registered( b->owner->eclass->comments ) )
+			|| NodEntity_IsPoint( ValueForKey( b->owner, "classname" ) )
+			|| NodEntity_IsUVBrush( ValueForKey( b->owner, "classname" ), ValueForKey( b->owner, "nod_id" ),
+				ValueForKey( b->owner, "nod_uv_mapping" ) ) );
+		if ( !b->brush_faces || ( g_PrefsDlg.m_bCleanTiny && !nativeGeometry
+			&& CheckForTinyBrush( b, n++, g_PrefsDlg.m_fTinySize ) ) ) {
 			Brush_Free( b );
 			Sys_Printf( "Removed degenerate brush\n" );
 		}
 	}
+
 	Sys_EndWait();
 }
 
@@ -143,6 +186,7 @@ entity_t *Map_FindClass( const char *cname ){
 			return ent;
 		}
 	}
+
 	return NULL;
 }
 
@@ -153,6 +197,10 @@ entity_t *Map_FindClass( const char *cname ){
    ================
  */
 void Map_Free( void ){
+	g_nodViewState = NodViewState();
+	nodImportedIds.clear();
+	nodExportedIds.clear();
+	nodSidecarRejected = false;
 	g_bRestoreBetween = false;
 	if ( selected_brushes.next &&
 		 ( selected_brushes.next != &selected_brushes ) ) {
@@ -177,19 +225,24 @@ void Map_Free( void ){
 		// free selected faces array
 		g_ptrSelectedFaces.RemoveAll();
 		g_ptrSelectedFaceBrushes.RemoveAll();
-		while ( active_brushes.next != &active_brushes )
+		while ( active_brushes.next != &active_brushes ) {
 			Brush_Free( active_brushes.next );
-		while ( selected_brushes.next != &selected_brushes )
+		}
+		while ( selected_brushes.next != &selected_brushes ) {
 			Brush_Free( selected_brushes.next );
-		while ( filtered_brushes.next != &filtered_brushes )
+		}
+		while ( filtered_brushes.next != &filtered_brushes ) {
 			Brush_Free( filtered_brushes.next );
-		while ( entities.next != &entities )
+		}
+		while ( entities.next != &entities ) {
 			Entity_Free( entities.next );
+	}
 	}
 
 	if ( world_entity ) {
 		Entity_Free( world_entity );
 	}
+
 	world_entity = NULL;
 }
 
@@ -202,24 +255,31 @@ entity_t *AngledEntity(){
 	if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
 		return ent;
 	}
+
 	if ( !ent ) {
 		ent = Map_FindClass( "info_player_deathmatch" );
 	}
+
 	if ( !ent ) {
 		ent = Map_FindClass( "info_player_deathmatch" );
 	}
+
 	if ( !ent ) {
 		ent = Map_FindClass( "team_CTF_redplayer" );
 	}
+
 	if ( !ent ) {
 		ent = Map_FindClass( "team_CTF_blueplayer" );
 	}
+
 	if ( !ent ) {
 		ent = Map_FindClass( "team_CTF_redspawn" );
 	}
+
 	if ( !ent ) {
 		ent = Map_FindClass( "team_CTF_bluespawn" );
 	}
+
 	return ent;
 }
 
@@ -260,13 +320,16 @@ void Map_FreeEntities( CPtrArray *ents ){
 		e = (entity_t*)ents->GetAt( i );
 		brushes = (CPtrArray*)e->pData;
 		num_brushes = brushes->GetSize();
-		for ( j = 0; j < num_brushes; j++ )
+		for ( j = 0; j < num_brushes; j++ ) {
 			Brush_Free( (brush_t*)brushes->GetAt( j ) );
+		}
+
 		brushes->RemoveAll();
 		delete (CPtrArray*)e->pData;
 		e->pData = NULL;
 		Entity_Free( e );
 	}
+
 	ents->RemoveAll();
 }
 
@@ -292,6 +355,36 @@ void Map_ImportEntities( CPtrArray *ents, bool bAddSelected = false ){
 	// check the first brush in the file that is NOT a patch
 	// this will not be necessary when we allow both formats in the same file
 	num_ents = ents->GetSize();
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+		std::string context = bAddSelected ? NodClasses_Context() : "";
+		bool haveContext = bAddSelected, mixed = false;
+		for ( int index = 0; index < num_ents; ++index ) {
+			entity_t *candidate = static_cast<entity_t *>( ents->GetAt( index ) );
+			if ( strcmp( ValueForKey( candidate, "classname" ), "worldspawn" ) == 0 && !haveContext &&
+				*ValueForKey( candidate, "nod_template_archives" ) ) {
+				context = ValueForKey( candidate, "nod_template_archives" ); haveContext = true;
+			}
+
+			if ( strcmp( ValueForKey( candidate, "nod_authoring" ), "not-template-v2" ) != 0 ) {
+				continue;
+			}
+
+			const std::string archives = ValueForKey( candidate, "nod_template_archives" );
+			if ( haveContext && context != archives ) {
+				Sys_FPrintf( SYS_ERR, "Imported MAP contains mixed NOT archive contexts; use per-instance metadata to inspect mismatches.\n" );
+				mixed = true;
+				continue;
+			}
+
+			context = archives; haveContext = true;
+		}
+
+		std::string error;
+		if ( !mixed && !NodClasses_Load( context.c_str(), error ) ) {
+			Sys_FPrintf( SYS_ERR, "MAP NOT database: %s\n", error.c_str() );
+	}
+	}
+
 	for ( i = 0; !bDoneBPCheck && i < num_ents; i++ )
 	{
 		e = (entity_t*)ents->GetAt( i );
@@ -304,7 +397,15 @@ void Map_ImportEntities( CPtrArray *ents, bool bAddSelected = false ){
 			if ( b->patchBrush ) {
 				continue;
 			}
+
 			bDoneBPCheck = true;
+			if ( b->bBrushDef && !world_entity && active_brushes.next == &active_brushes
+				&& selected_brushes.next == &selected_brushes
+				&& NodEntity_IsUVBrush( ValueForKey( e, "classname" ), ValueForKey( e, "nod_id" ),
+					ValueForKey( e, "nod_uv_mapping" ) ) ) {
+				g_qeglobals.m_bBrushPrimitMode = true;
+			}
+
 			int BP_param = -1;
 			if ( b->bBrushDef && !g_qeglobals.m_bBrushPrimitMode ) {
 				BP_param = 0;
@@ -339,12 +440,17 @@ void Map_ImportEntities( CPtrArray *ents, bool bAddSelected = false ){
 		brushes = (CPtrArray*)e->pData;
 
 		num_brushes = brushes->GetSize();
+		if ( nodImportingMap ) {
+			nodImportedIds.push_back( e->entityId );
+		}
+
 		// link brushes into entity
 		for ( j = 0; j < num_brushes; j++ )
 		{
 			Entity_LinkBrush( e, (brush_t *)brushes->GetAt( j ) );
 			g_qeglobals.d_parsed_brushes++;
 		}
+
 		brushes->RemoveAll();
 		delete brushes;
 		e->pData = NULL;
@@ -355,6 +461,10 @@ void Map_ImportEntities( CPtrArray *ents, bool bAddSelected = false ){
 		/*!\todo Make SetKeyValue check for "classname" change and assign appropriate eclass */
 		e->eclass = Eclass_ForName( ValueForKey( e, "classname" ),
 									( e->brushes.onext != &e->brushes ) );
+		if ( NodClass_Registered( e->eclass->comments ) ) {
+			const std::string classname = ValueForKey( e, "classname" );
+			SetKeyValue( e, "classname", classname.c_str() );
+		}
 
 		// go through all parsed brushes and build stuff
 		for ( b = e->brushes.onext; b != &e->brushes; b = b->onext )
@@ -387,10 +497,11 @@ void Map_ImportEntities( CPtrArray *ents, bool bAddSelected = false ){
 			for ( b = e->brushes.onext; b != &e->brushes; b = b->onext )
 			{
 				if ( pTerrainShader == NULL ) {
-					for ( f = b->brush_faces; f != NULL; f = f->next )
+					for ( f = b->brush_faces; f != NULL; f = f->next ) {
 						if ( strcmp( f->texdef.GetName(), SHADER_CAULK ) != 0 ) {
 							pTerrainShader = f->pShader;
 						}
+				}
 				}
 
 				if ( pTerrainShader ) {
@@ -425,6 +536,7 @@ void Map_ImportEntities( CPtrArray *ents, bool bAddSelected = false ){
 						maxs[i] += 4;
 					}
 				}
+
 				Brush_Resize( b, mins, maxs );
 				Brush_Build( b );
 			}
@@ -440,8 +552,9 @@ void Map_ImportEntities( CPtrArray *ents, bool bAddSelected = false ){
 			Brush_Build( b );
 		}
 
-		for ( b = e->brushes.onext; b != &e->brushes; b = b->onext )
+		for ( b = e->brushes.onext; b != &e->brushes; b = b->onext ) {
 			Brush_AddToList( b, pBrushList );
+		}
 
 		if ( strcmp( e->eclass->name, "worldspawn" ) == 0 ) {
 			if ( world_entity ) {
@@ -451,6 +564,7 @@ void Map_ImportEntities( CPtrArray *ents, bool bAddSelected = false ){
 					Entity_UnlinkBrush( b );
 					Entity_LinkBrush( world_entity, b );
 				}
+
 				Entity_Free( e );
 			}
 			else
@@ -499,13 +613,16 @@ void Map_ImportEntities( CPtrArray *ents, bool bAddSelected = false ){
 							}
 						}
 					}
+
 					if ( t_ents->len > 0 ) {
 						// link the first to get a unique target/targetname
 						Entity_Connect( e, (entity_t*)g_ptr_array_index( t_ents,0 ) );
 						// set the targetname of the rest of them manually
-						for ( j = 1; j < (int)t_ents->len; j++ )
+						for ( j = 1; j < (int)t_ents->len; j++ ) {
 							SetKeyValue( (entity_t*)g_ptr_array_index( t_ents, j ), "targetname", ValueForKey( e, "target" ) );
 					}
+					}
+
 					g_ptr_array_free( t_ents, FALSE );
 				}
 			}
@@ -518,6 +635,7 @@ void Map_ImportEntities( CPtrArray *ents, bool bAddSelected = false ){
 			g_ptr_array_add( new_ents, (gpointer)e );
 		}
 	}
+
 	g_ptr_array_free( new_ents, FALSE );
 
 	ents->RemoveAll();
@@ -573,15 +691,19 @@ void Map_LoadFile( const char *filename ){
 	if ( type != NULL ) {
 		type++;
 	}
+
 	// NOTE TTimo opening has binary doesn't make a lot of sense
 	// but opening as text confuses the scriptlib parser
 	// this may be a problem if we "rb" and use the XML parser, might have an incompatibility
 	if ( file.Open( filename, "rb" ) ) {
+		nodImportingMap = g_pGameDescription->mGameFile == SCGHOST_GAME;
 		Map_Import( &file, type );
+		nodImportingMap = false;
 	}
 	else{
 		Sys_FPrintf( SYS_ERR, "ERROR: failed to open %s for read\n", filename );
 	}
+
 	file.Close();
 
 	g_bScreenUpdates = true;
@@ -599,6 +721,16 @@ void Map_LoadFile( const char *filename ){
 		Sys_EndWait();
 		return;
 	}
+
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+		std::string error;
+		if ( !NodEditor_LoadLayers( filename, nodImportedIds, g_nodViewState, error ) ) {
+			nodSidecarRejected = true;
+			Sys_FPrintf( SYS_ERR, "NOD editor data: %s\n", error.c_str() );
+			gtk_MessageBox( g_pParentWnd->m_pWidget, error.c_str(), _( "NOD editor data" ), MB_OK | MB_ICONERROR );
+		}
+	}
+
 	finish = clock();
 	elapsed_time = (double)( finish - start ) / CLOCKS_PER_SEC;
 
@@ -619,6 +751,9 @@ void Map_LoadFile( const char *filename ){
 	Map_StartPosition();
 
 	Map_RegionOff();
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+		FiltersActivate();
+	}
 
 	modified = false;
 	Sys_SetTitle( filename );
@@ -650,9 +785,10 @@ bool FilterChildren( entity_t *ent, bool bRegionOnly = false, bool bSelectedOnly
 	if ( ent->brushes.onext == &ent->brushes ) {
 		return false;
 	}
+
 	// entity without a brush, ignore it... this can be caused by Undo
 
-	// filter fixedsize ents by their eclass bounding box
+	// Use the same bounds as rendering and selection for dynamic point entities.
 	// don't add their brushes
 	if ( ent->eclass->fixedsize ) {
 		if ( bSelectedOnly && !IsBrushSelected( ent->brushes.onext ) ) {
@@ -660,12 +796,24 @@ bool FilterChildren( entity_t *ent, bool bRegionOnly = false, bool bSelectedOnly
 		}
 
 		if ( bRegionOnly && region_active ) {
+			vec3_t mins, maxs;
+			if ( ent->model.pRender ) {
+				const aabb_t *bounds = ent->model.pRender->GetAABB();
+				VectorSubtract( bounds->origin, bounds->extents, mins );
+				VectorAdd( bounds->origin, bounds->extents, maxs );
+			}
+			else {
+				VectorAdd( ent->origin, ent->eclass->mins, mins );
+				VectorAdd( ent->origin, ent->eclass->maxs, maxs );
+			}
+
 			for ( int i = 0 ; i < 3 ; i++ )
 			{
-				if ( ( ent->origin[i] + ent->eclass->mins[i] ) > region_maxs[i] ) {
+				if ( mins[i] > region_maxs[i] ) {
 					return false;
 				}
-				if ( ( ent->origin[i] + ent->eclass->maxs[i] ) < region_mins[i] ) {
+
+				if ( maxs[i] < region_mins[i] ) {
 					return false;
 				}
 			}
@@ -694,6 +842,7 @@ bool FilterChildren( entity_t *ent, bool bRegionOnly = false, bool bSelectedOnly
 			return false;
 		}
 	}
+
 	return true;
 }
 
@@ -731,8 +880,9 @@ void Map_ExportEntities( CPtrArray* ents, bool bRegionOnly = false, bool bSelect
 	}
 
 	if ( bRegionOnly && region_active ) {
-		for ( i = 0; i < 6; i++ )
+		for ( i = 0; i < 6; i++ ) {
 			( (CPtrArray*)world_entity->pData )->Add( region_sides[i] );
+		}
 
 		ents->Add( region_startpoint );
 	}
@@ -749,17 +899,25 @@ void Map_Export( IDataStream *out, const char *type, bool bRegionOnly, bool bSel
 
 	// create the filters
 	world_entity->pData = new CPtrArray();
-	for ( e = entities.next; e != &entities; e = e->next )
+	for ( e = entities.next; e != &entities; e = e->next ) {
 		e->pData = new CPtrArray();
+	}
 
 	Map_ExportEntities( &ents, bRegionOnly, bSelectedOnly );
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME && !bRegionOnly && !bSelectedOnly ) {
+		nodExportedIds.clear();
+		for ( int i = 0; i < ents.GetSize(); ++i ) {
+			nodExportedIds.push_back( static_cast<entity_t *>( ents.GetAt( i ) )->entityId );
+	}
+	}
 
 	g_pParentWnd->GetSynapseClient().ExportMap( &ents, out, type );
 
 	// cleanup the filters
 	CleanFilter( world_entity );
-	for ( e = entities.next ; e != &entities ; e = e->next )
+	for ( e = entities.next ; e != &entities ; e = e->next ) {
 		CleanFilter( e );
+	}
 
 	if ( bRegionOnly && region_active ) {
 		RemoveRegionBrushes();
@@ -771,6 +929,7 @@ const char* filename_get_extension( const char* filename ){
 	if ( type != NULL ) {
 		return ++type;
 	}
+
 	return "";
 }
 
@@ -781,6 +940,16 @@ const char* filename_get_extension( const char* filename ){
    ===========
  */
 void Map_SaveFile( const char *filename, qboolean use_region ){
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME && !use_region && nodSidecarRejected
+		 && g_file_test( ( std::string( filename ) + ".nodeditor.xml" ).c_str(), G_FILE_TEST_EXISTS )
+		 && gtk_MessageBox( g_pParentWnd->m_pWidget,
+			_( "The existing editor sidecar was not loaded because it was invalid or did not match the MAP.\n"
+			   "Replace it with the current editor data when saving this map?" ),
+			_( "Replace NOD editor data?" ), MB_YESNO | MB_ICONWARNING ) != IDYES ) {
+		modified = true;
+		return;
+	}
+
 	clock_t start, finish;
 	double elapsed_time;
 	start = clock();
@@ -805,13 +974,42 @@ void Map_SaveFile( const char *filename, qboolean use_region ){
 	FileStream file;
 	if ( !file.Open( filename,"w" ) ) {
 		Sys_FPrintf( SYS_ERR, "ERROR: couldn't open %s for write\n", filename );
+		if ( g_pGameDescription->mGameFile == SCGHOST_GAME && !use_region ) {
+			modified = true;
+			gtk_MessageBox( g_pParentWnd->m_pWidget,
+				_( "The MAP could not be opened for writing. Your changes remain unsaved." ),
+				_( "NOD map save failed" ), MB_OK | MB_ICONERROR );
+		}
+
 		return;
 	}
 
 	// extract filetype
 	Map_Export( &file, filename_get_extension( filename ), use_region );
 
-	file.Close();
+	const bool mapWritten = file.CloseChecked();
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME && !use_region && !mapWritten ) {
+		modified = true;
+		Sys_FPrintf( SYS_ERR, "ERROR: writing MAP failed: %s\n", filename );
+		gtk_MessageBox( g_pParentWnd->m_pWidget,
+			_( "Writing the MAP failed. Editor layer data was not saved. Keep the map open and retry Save." ),
+			_( "NOD map save failed" ), MB_OK | MB_ICONERROR );
+		return;
+	}
+
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME && !use_region ) {
+		std::string error;
+		if ( !NodEditor_SaveLayers( filename, nodExportedIds, g_nodViewState, error ) ) {
+			modified = true;
+			Sys_FPrintf( SYS_ERR, "MAP saved, but NOD editor data failed: %s\n", error.c_str() );
+			gtk_MessageBox( g_pParentWnd->m_pWidget,
+				( std::string( "The MAP was written, but its editor layer data was not saved:\n" ) + error
+				  + "\nKeep the map open and retry Save." ).c_str(), _( "NOD editor data" ), MB_OK | MB_ICONERROR );
+			return;
+		}
+
+		nodSidecarRejected = false;
+	}
 
 	finish = clock();
 	elapsed_time = (double)( finish - start ) / CLOCKS_PER_SEC;
@@ -831,6 +1029,7 @@ void Map_SaveFile( const char *filename, qboolean use_region ){
 		if( g_PrefsDlg.m_bSaveBeep ) {
 			Sys_Beep();
 		}
+
 		Sys_Status( "Saved.", 0 );
 	}
 }
@@ -956,6 +1155,7 @@ void AddRegionBrushes( void ){
 		sprintf( sTmp, "%d", (int)g_pParentWnd->GetCamWnd()->Camera()->angles[YAW] );
 		SetKeyValue( region_startpoint, "angle", sTmp );
 	}
+
 	// empty array of children
 	region_startpoint->pData = new CPtrArray;
 }
@@ -966,8 +1166,10 @@ void RemoveRegionBrushes( void ){
 	if ( !region_active ) {
 		return;
 	}
-	for ( i = 0 ; i < 6 ; i++ )
+
+	for ( i = 0 ; i < 6 ; i++ ) {
 		Brush_Free( region_sides[i] );
+	}
 
 	CleanFilter( region_startpoint );
 	Entity_Free( region_startpoint );
@@ -981,10 +1183,12 @@ qboolean Map_IsBrushFiltered( brush_t *b ){
 		if ( b->mins[i] > region_maxs[i] ) {
 			return true;
 		}
+
 		if ( b->maxs[i] < region_mins[i] ) {
 			return true;
 		}
 	}
+
 	return false;
 }
 
@@ -1012,14 +1216,17 @@ void Map_RegionOff( void ){
 		if ( Map_IsBrushFiltered( b ) ) {
 			continue;       // still filtered
 		}
+
 		Brush_RemoveFromList( b );
 		if ( active_brushes.next == NULL || active_brushes.prev == NULL ) {
 			active_brushes.next = &active_brushes;
 			active_brushes.prev = &active_brushes;
 		}
+
 		Brush_AddToList( b, &active_brushes );
 		b->bFiltered = FilterBrush( b );
 	}
+
 	Sys_UpdateWindows( W_ALL );
 }
 
@@ -1033,6 +1240,7 @@ void Map_ApplyRegion( void ){
 		if ( !Map_IsBrushFiltered( b ) ) {
 			continue;       // still filtered
 		}
+
 		Brush_RemoveFromList( b );
 		Brush_AddToList( b, &filtered_brushes );
 	}
@@ -1053,6 +1261,7 @@ void Map_RegionSelectedBrushes( void ){
 		Sys_Printf( "Tried to region with no selection...\n" );
 		return;
 	}
+
 	region_active = true;
 	Select_GetBounds( region_mins, region_maxs );
 
@@ -1083,10 +1292,11 @@ void Map_RegionSelectedBrushes( void ){
 	active_brushes.prev->next = &active_brushes;
 
 	// deselect patches
-	for ( brush_t *b = active_brushes.next; b != &active_brushes; b = b->next )
+	for ( brush_t *b = active_brushes.next; b != &active_brushes; b = b->next ) {
 		if ( b->patchBrush ) {
 			b->pPatch->bSelected = false;
 		}
+	}
 
 	// clear selected_brushes
 	selected_brushes.next = selected_brushes.prev = &selected_brushes;
@@ -1178,8 +1388,10 @@ GList *find_string( GList *glist, const char *buf ){
 		if ( strcmp( (char *)glist->data, buf ) == 0 ) {
 			break; // this name is in our list already
 		}
+
 		glist = glist->next;
 	}
+
 	return glist;
 }
 
@@ -1216,6 +1428,7 @@ void Map_ImportFile( const char *filename ){
 	if ( type != NULL ) {
 		type++;
 	}
+
 	/*!\todo Resolve "r" problem in scriptlib" */
 	if ( file.Open( filename, "rb" ) ) {
 		Map_Import( &file, type, true );
@@ -1247,6 +1460,7 @@ void Map_SaveSelected( const char* filename ){
 	if ( type != NULL ) {
 		type++;
 	}
+
 	if ( file.Open( filename, "w" ) ) {
 		Map_Export( &file, type, false, true );
 	}
@@ -1316,5 +1530,6 @@ void Region_SpawnPoint( FILE *f ){
 	} else {
 		fprintf( f, "\"angle\" \"%i\"\n", (int)g_pParentWnd->GetCamWnd()->Camera()->angles[YAW] );
 	}
+
 	fprintf( f, "}\n" );
 }

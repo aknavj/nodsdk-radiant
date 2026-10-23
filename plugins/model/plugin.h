@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: plugin.h
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -39,6 +65,7 @@
 #define USE_QERTABLE_DEFINE
 #include "qerplugin.h"
 #include "imodel.h"
+#include "inodmodel.h"
 #include "igl.h"
 #include "ifilesystem.h"
 #include "ishaders.h"
@@ -52,12 +79,18 @@ extern _QERFileSystemTable g_FileSystemTable;
 #define vfsLoadFile g_FileSystemTable.m_pfnLoadFile
 #define vfsFreeFile g_FileSystemTable.m_pfnFreeFile
 #define vfsBasePromptPath g_FileSystemTable.m_pfnBasePromptPath
+#define vfsGetFileList g_FileSystemTable.m_pfnGetFileList
+#define vfsGetDirList g_FileSystemTable.m_pfnGetDirList
+#define vfsClearFileDirList g_FileSystemTable.m_pfnClearFileDirList
+#define vfsGetFullPath g_FileSystemTable.m_pfnGetFullPath
 #define QERApp_Shader_ForName g_ShadersTable.m_pfnShader_ForName
 
 void DoFlushReloadSelected();
 void DoFlushReloadAll();
 
 void LoadModel( entity_interfaces_t *model, const char *name );
+bool NodModel_Catalog( const char *bundle, PFN_NOD_MODEL_RESOURCE emit, void *data, GError **error );
+bool NodModel_Check( const char *bundle, const char *reference, PFN_NOD_MODEL_RESOURCE emit, void *data, GError **error );
 
 extern CSynapseServer* g_pSynapseServer;
 

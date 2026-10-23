@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: write.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -30,12 +56,7 @@ static int g_count_brushes;
 extern int g_MapVersion;
 
 void Float_Write( float data, IDataStream *out ){
-	if ( data == (int)data ) {
-		out->printf( "%i ", (int)data );
-	}
-	else{
-		out->printf( "%f ", data );
-	}
+	out->printf( "%.9g ", static_cast<double>( data ) );
 }
 
 void Patch_Write( patchMesh_t *pPatch, IDataStream *out ){
@@ -48,9 +69,11 @@ void Patch_Write( patchMesh_t *pPatch, IDataStream *out ){
 		Sys_FPrintf( SYS_WRN, "WARNING: Patch_Write: shader names with spaces are not allowed, ignoring '%s'\n", str );
 		str = SHADER_NOT_FOUND;
 	}
+
 	if ( !strncmp( str, "textures/", 9 ) ) {
 		str += 9;
 	}
+
 	out->printf( "patchDef2\n{\n%s\n( %i %i 0 0 0 )\n",
 				 str, pPatch->width, pPatch->height );
 
@@ -71,8 +94,10 @@ void Patch_Write( patchMesh_t *pPatch, IDataStream *out ){
 
 			out->printf( ") " );
 		}
+
 		out->printf( ")\n" );
 	}
+
 	out->printf( ")\n}\n" );
 }
 
@@ -88,17 +113,22 @@ void Face_Write( face_t *face, IDataStream *out, bool bAlternateTexdef = false )
 		{
 			Float_Write( face->planepts[i][j], out );
 		}
+
 		out->printf( ") " );
 	}
 
 	if ( bAlternateTexdef ) {
 		// write alternate texdef
 		out->printf( "( ( " );
-		for ( i = 0; i < 3; i++ )
+		for ( i = 0; i < 3; i++ ) {
 			Float_Write( face->brushprimit_texdef.coords[0][i], out );
+		}
+
 		out->printf( ") ( " );
-		for ( i = 0; i < 3; i++ )
+		for ( i = 0; i < 3; i++ ) {
 			Float_Write( face->brushprimit_texdef.coords[1][i], out );
+		}
+
 		out->printf( ") ) " );
 	}
 
@@ -108,6 +138,7 @@ void Face_Write( face_t *face, IDataStream *out, bool bAlternateTexdef = false )
 		Sys_FPrintf( SYS_WRN, "WARNING: Face_Write: shader names with spaces are not allowed, ignoring '%s'\n", str );
 		str = SHADER_NOT_FOUND;
 	}
+
 	if ( !strncmp( str, "textures/", 9 ) ) {
 		str += 9;
 	}
@@ -120,6 +151,7 @@ void Face_Write( face_t *face, IDataStream *out, bool bAlternateTexdef = false )
 			str = pos + 1; // to speed optimize, change the "while" to an "if"
 		}
 	}
+
 	out->printf( "%s ", str );
 
 	if ( !bAlternateTexdef ) {
@@ -169,14 +201,18 @@ void Primitive_Write( brush_t *pBrush, IDataStream *out ){
 		}
 		else if ( pBrush->bBrushDef ) {
 			out->printf( "brushDef\n{\n" );
-			for ( face_t *face = pBrush->brush_faces; face != NULL; face = face->next )
+			for ( face_t *face = pBrush->brush_faces; face != NULL; face = face->next ) {
 				Face_Write( face, out, true );
+			}
+
 			out->printf( "}\n" );
 		}
 		else{
-			for ( face_t *face = pBrush->brush_faces; face != NULL; face = face->next )
+			for ( face_t *face = pBrush->brush_faces; face != NULL; face = face->next ) {
 				Face_Write( face, out );
 		}
+		}
+
 		out->printf( "}\n" );
 	}
 }
@@ -186,18 +222,23 @@ void Entity_Write( entity_t *pEntity, IDataStream *out ){
 	CPtrArray *brushes = (CPtrArray*)pEntity->pData;
 	out->printf( "// entity %i\n", g_count_entities++ );
 	out->printf( "{\n" );
-	for ( pEpair = pEntity->epairs; pEpair != NULL; pEpair = pEpair->next )
+	for ( pEpair = pEntity->epairs; pEpair != NULL; pEpair = pEpair->next ) {
 		out->printf( "\"%s\" \"%s\"\n", pEpair->key, pEpair->value );
+	}
+
 	g_count_brushes = 0;
-	for ( int i = 0; i < brushes->GetSize(); i++ )
+	for ( int i = 0; i < brushes->GetSize(); i++ ) {
 		Primitive_Write( (brush_t*)brushes->GetAt( i ), out );
+	}
+
 	out->printf( "}\n" );
 }
 
 void Map_Write( CPtrArray *map, IDataStream *out ){
 	g_count_entities = 0;
-	for ( int i = 0; i < map->GetSize(); i++ )
+	for ( int i = 0; i < map->GetSize(); i++ ) {
 		Entity_Write( (entity_t*)map->GetAt( i ), out );
+}
 }
 
 void Map_WriteQ3( CPtrArray *map, IDataStream *out ){

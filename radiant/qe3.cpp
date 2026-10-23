@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: qe3.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -26,6 +52,7 @@
 //
 
 #include "stdafx.h"
+#include "nodpathplacement.h"
 #include <gtk/gtk.h>
 #include <sys/stat.h>
 #include "gtkmisc.h"
@@ -80,6 +107,7 @@ void debug_free( void *buf, const char* file, int line ){
 
 		g_free( buf );
 	}
+
 //  else
 //    free (buf); // from qmalloc, will leak unless we add this same hack to cmdlib
 }
@@ -104,6 +132,7 @@ void WINAPI QE_CheckOpenGLForErrors( void ){
 			if ( gtk_MessageBox( g_pParentWnd->m_pWidget, strMsg, _( "Radiant Error" ), MB_YESNO ) == IDYES ) {
 				Map_SaveFile( NULL, false );
 			}
+
 			_exit( 1 );
 		}
 		else
@@ -121,6 +150,7 @@ char *ExpandReletivePath( char *p ){
 	if ( !p || !p[0] ) {
 		return NULL;
 	}
+
 	if ( p[0] == '/' || p[0] == '\\' ) {
 		return p;
 	}
@@ -145,6 +175,7 @@ bool DoesFileExist( const char* pBuff, long& lSize ){
 		file.Close();
 		return true;
 	}
+
 	return false;
 }
 
@@ -175,6 +206,7 @@ void Map_Snapshot(){
 		bGo = ( mkdir( strOrgPath,0755 ) != -1 );
 #endif
 	}
+
 	AddSlash( strOrgPath );
 	if ( bGo ) {
 		int nCount = 0;
@@ -202,6 +234,7 @@ void Map_Snapshot(){
 			bGo = DoesFileExist( strFile, lSize );
 			nCount++;
 		}
+
 		// strFile has the next available slot
 		Map_SaveFile( strFile, false );
 		// it is still a modified map (we enter this only if this is a modified map)
@@ -216,9 +249,11 @@ void Map_Snapshot(){
 		strMsg.Format( "Snapshot save failed.. unabled to create directory\n%s", strOrgPath.GetBuffer() );
 		gtk_MessageBox( g_pParentWnd->m_pWidget, strMsg );
 	}
+
 	strOrgPath = "";
 	strOrgFile = "";
 }
+
 /*
    ===============
    QE_CheckAutoSave
@@ -264,6 +299,7 @@ void QE_CheckAutoSave( void ){
 			Sys_Printf( "Autosave skipped...\n" );
 			Sys_Status( "Autosave skipped...", 0 );
 		}
+
 		s_start = now;
 	}
 }
@@ -284,6 +320,7 @@ int BuildShortPathName( const char* pPath, char* pBuffer, int nBufferLen ){
 	if ( nResult == 0 ) {
 		strcpy( pBuffer, pPath );               // Use long filename
 	}
+
 	return nResult;
 }
 #endif
@@ -306,6 +343,7 @@ int BuildShortPathName( const char* pPath, char* pBuffer, int nBufferLen ){
 
 		scr++; dst++;
 	}
+
 	*dst = 0;
 
 	return strlen( pBuffer );
@@ -385,9 +423,15 @@ xmlDocPtr ParseXMLStream( IDataStream *stream, bool validate = false ){
 	i = 0;
 	// copy
 	//assert(g_strAppPath.GetBuffer() != NULL);
-	for ( r = g_strAppPath.GetBuffer(); i < DTD_BUFFER_LENGTH && *r != '\0'; i++, r++ ) w[i] = *r;
+	for ( r = g_strAppPath.GetBuffer(); i < DTD_BUFFER_LENGTH && *r != '\0'; i++, r++ ) {
+		w[i] = *r;
+	}
+
 	// concatenate
-	for ( r = "dtds/"; i < DTD_BUFFER_LENGTH && *r != '\0'; i++, r++ ) w[i] = *r;
+	for ( r = "dtds/"; i < DTD_BUFFER_LENGTH && *r != '\0'; i++, r++ ) {
+		w[i] = *r;
+	}
+
 	// terminate
 	w[i] = '\0';
 
@@ -404,6 +448,7 @@ xmlDocPtr ParseXMLStream( IDataStream *stream, bool validate = false ){
 		{
 			xmlParseChunk( ctxt, chars, res, 0 );
 		}
+
 		xmlParseChunk( ctxt, chars, 0, 1 );
 		doc = ctxt->myDoc;
 
@@ -493,10 +538,12 @@ static void ReplaceTemplates( char* w, const char* r ){
 				p = "$";
 			}
 
-			while ( *p != '\0' ) *w++ = *p++;
+			while ( *p != '\0' ) {
+				*w++ = *p++;
 		}
-		else{ *w++ = *r++; }
+		} else{ *w++ = *r++; }
 	}
+
 	*w = '\0';
 }
 
@@ -514,10 +561,12 @@ int QE_GetTemplateVersionForProject( const char * projectfile ) {
     Sys_FPrintf( SYS_ERR, "ERROR: XML parse failed %s\n", projectfile );
     return 0;
   }
+
   node = doc->children;
   while ( node != NULL && node->type != XML_DTD_NODE ) {
     node = node->next;
   }
+
   if ( node == NULL || strcmp( (char*)node->name, "project" ) != 0 ) {
     Sys_FPrintf( SYS_ERR, "ERROR: invalid file type %s\n", projectfile );
     xmlFree( doc );
@@ -526,6 +575,7 @@ int QE_GetTemplateVersionForProject( const char * projectfile ) {
   while ( node->type != XML_ELEMENT_NODE ) {
     node = node->next;
   }
+
   // <project>
   project = node;
 
@@ -533,12 +583,14 @@ int QE_GetTemplateVersionForProject( const char * projectfile ) {
     if ( node->type != XML_ELEMENT_NODE ) {
       continue;
     }
+
     if ( strcmp( (char*)node->properties->children->content, "template_version" ) == 0 ) {
       ret = atoi( (char*)node->properties->next->children->content );
       xmlFreeDoc( doc );
       return ret;
     }
   }
+
   Sys_FPrintf( SYS_WRN, "Version key not found in %s\n", projectfile );
   xmlFreeDoc( doc );
   return 0;
@@ -564,19 +616,26 @@ bool QE_LoadProject( const char *projectfile ){
 	}
 
 	node = doc->children;
-	while ( node != NULL && node->type != XML_DTD_NODE ) node = node->next;
+	while ( node != NULL && node->type != XML_DTD_NODE ) {
+		node = node->next;
+	}
+
 	if ( node == NULL || strcmp( (char*)node->name, "project" ) != 0 ) {
 		Sys_FPrintf( SYS_ERR, "ERROR: invalid file type\n" );
 		return false;
 	}
 
-	while ( node->type != XML_ELEMENT_NODE ) node = node->next;
+	while ( node->type != XML_ELEMENT_NODE ) {
+		node = node->next;
+	}
+
 	// <project>
 	project = node;
 
 	if ( g_qeglobals.d_project_entity != NULL ) {
 		Entity_Free( g_qeglobals.d_project_entity );
 	}
+
 	g_qeglobals.d_project_entity = Entity_Alloc();
 
 	for ( node = project->children; node != NULL; node = node->next )
@@ -619,6 +678,7 @@ bool QE_LoadProject( const char *projectfile ){
 	if ( str[0] == '\0' ) {
 		str = g_pGameDescription->mBaseGame.GetBuffer();
 	}
+
 	g_qeglobals.m_strHomeMaps += str;
 	g_qeglobals.m_strHomeMaps += G_DIR_SEPARATOR;
 
@@ -670,6 +730,7 @@ bool QE_LoadProject( const char *projectfile ){
 				break;
 			}
 		}
+
 		// saving project will cause a save prefs
 		g_PrefsDlg.m_strLastProject = buf;
 		g_PrefsDlg.m_nLastProjectVer = IntForKey( g_qeglobals.d_project_entity, "version" );
@@ -758,6 +819,15 @@ void ConnectEntities( void ){
 
 	e1 = g_qeglobals.d_select_order[0]->owner;
 	e2 = g_qeglobals.d_select_order[1]->owner;
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME &&
+		( NodPath_Class( ValueForKey( e1, "classname" ) ) || NodPath_Class( ValueForKey( e2, "classname" ) ) ) ) {
+		std::string error;
+		if ( !NodPath_Connect( e1, e2, error ) ) {
+			Sys_FPrintf( SYS_WRN, "NOD path: %s\n", error.c_str() );
+			gtk_MessageBox( g_pParentWnd->m_pWidget, error.c_str(), _( "Path not connected" ), MB_OK );
+		} else { edit_entity = selected_brushes.next->owner; Sys_MarkMapModified(); Sys_UpdateWindows( W_ALL ); }
+		return;
+	}
 
 	if ( e1 == world_entity || e2 == world_entity ) {
 		Sys_Status( "Can't connect to the world", 0 );
@@ -804,12 +874,15 @@ qboolean QE_SingleBrush( bool bQuiet ){
 		if ( !bQuiet ) {
 			Sys_FPrintf( SYS_ERR, "ERROR: you must have a single brush selected\n" );
 		}
+
 		return false;
 	}
+
 	if ( selected_brushes.next->owner->eclass->fixedsize ) {
 		if ( !bQuiet ) {
 			Sys_FPrintf( SYS_ERR, "ERROR: you cannot manipulate fixed size entities\n" );
 		}
+
 		return false;
 	}
 
@@ -898,6 +971,7 @@ void QE_InitVFS( void ){
 		if ( CheckFile( directory.GetBuffer() ) != PATH_DIRECTORY ) {
 			Error( "NOD asset path is not a directory: %s\n", directory.GetBuffer() );
 		}
+
 		Sys_Printf( "Mounting read-only NOD assets: %s\n", directory.GetBuffer() );
 		vfsInitDirectory( directory.GetBuffer() );
 	}
@@ -937,8 +1011,10 @@ void WINAPI QE_ConvertDOSToUnixName( char *dst, const char *src ){
 		else{
 			*dst = *src;
 		}
+
 		dst++; src++;
 	}
+
 	*dst = 0;
 }
 
@@ -968,6 +1044,7 @@ void QE_CountBrushesAndUpdateStatusBar( void ){
 			}
 		}
 	}
+
 /*
     if ( entities.next != NULL )
     {
@@ -1044,13 +1121,16 @@ skipwhite:
 			com_eof = true;
 			return NULL;            // end of file;
 		}
+
 		data++;
 	}
 
 // skip // comments
 	if ( c == '/' && data[1] == '/' ) {
-		while ( *data && *data != '\n' )
+		while ( *data && *data != '\n' ) {
 			data++;
+		}
+
 		goto skipwhite;
 	}
 
@@ -1065,6 +1145,7 @@ skipwhite:
 				com_token[len] = 0;
 				return data;
 			}
+
 			com_token[len] = c;
 			len++;
 		} while ( 1 );
@@ -1121,15 +1202,17 @@ void ParseCommandLine( char *lpCmdLine ){
 
 	while ( *lpCmdLine && ( argc < MAX_NUM_ARGVS ) )
 	{
-		while ( *lpCmdLine && ( ( *lpCmdLine <= 32 ) || ( *lpCmdLine > 126 ) ) )
+		while ( *lpCmdLine && ( ( *lpCmdLine <= 32 ) || ( *lpCmdLine > 126 ) ) ) {
 			lpCmdLine++;
+		}
 
 		if ( *lpCmdLine ) {
 			argv[argc] = lpCmdLine;
 			argc++;
 
-			while ( *lpCmdLine && ( ( *lpCmdLine > 32 ) && ( *lpCmdLine <= 126 ) ) )
+			while ( *lpCmdLine && ( ( *lpCmdLine > 32 ) && ( *lpCmdLine <= 126 ) ) ) {
 				lpCmdLine++;
+			}
 
 			if ( *lpCmdLine ) {
 				*lpCmdLine = 0;
@@ -1193,6 +1276,7 @@ int ParseHex( const char *hex ){
 		else{
 			Error( "Bad hex number: %s",hex );
 		}
+
 		str++;
 	}
 
@@ -1204,9 +1288,11 @@ int ParseNum( const char *str ){
 	if ( str[0] == '$' ) {
 		return ParseHex( str + 1 );
 	}
+
 	if ( str[0] == '0' && str[1] == 'x' ) {
 		return ParseHex( str + 2 );
 	}
+
 	return atol( str );
 }
 
@@ -1398,6 +1484,7 @@ void buffer_write_escaped_mnemonic( char* buffer, const char* string ){
 
 		*buffer++ = *string++;
 	}
+
 	*buffer = '\0';
 }
 
@@ -1420,15 +1507,18 @@ void MRU_Load(){
 		i = 4; //FIXME: make this a define
 
 	}
-	for (; i > 0; i-- )
+
+	for (; i > 0; i-- ) {
 		MRU_AddFile( g_PrefsDlg.m_strMRUFiles[i - 1].GetBuffer() );
+}
 }
 
 void MRU_Save(){
 	g_PrefsDlg.m_nMRUCount = MRU_used;
 
-	for ( int i = 0; i < MRU_used; i++ )
+	for ( int i = 0; i < MRU_used; i++ ) {
 		g_PrefsDlg.m_strMRUFiles[i] = MRU_GetText( i );
+}
 }
 
 void MRU_AddWidget( GtkWidget *widget, int pos ){
@@ -1448,8 +1538,9 @@ void MRU_AddFile( const char *str ){
 
 		if ( strcmp( text, str ) == 0 ) {
 			// reorder menu
-			for (; i > 0; i-- )
+			for (; i > 0; i-- ) {
 				MRU_SetText( i, MRU_GetText( i - 1 ) );
+			}
 
 			MRU_SetText( 0, str );
 
@@ -1462,8 +1553,9 @@ void MRU_AddFile( const char *str ){
 	}
 
 	// move items down
-	for ( i = MRU_used - 1; i > 0; i-- )
+	for ( i = MRU_used - 1; i > 0; i-- ) {
 		MRU_SetText( i, MRU_GetText( i - 1 ) );
+	}
 
 	MRU_SetText( 0, str );
 	gtk_widget_set_sensitive( MRU_items[0], TRUE );
@@ -1483,8 +1575,9 @@ void MRU_Activate( int index ){
 	{
 		MRU_used--;
 
-		for ( int i = index; i < MRU_used; i++ )
+		for ( int i = index; i < MRU_used; i++ ) {
 			MRU_SetText( i, MRU_GetText( i + 1 ) );
+		}
 
 		if ( MRU_used == 0 ) {
 			gtk_menu_item_set_label( GTK_MENU_ITEM( MRU_items[0] ), _( "Recent Files" ) );
@@ -1506,8 +1599,9 @@ void MRU_Activate( int index ){
  */
 
 qboolean ConfirmModified() {
-	if( !modified )
+	if( !modified ) {
 		return TRUE;
+	}
 
 	int saveChoice = gtk_MessageBoxNew( g_pParentWnd->m_pWidget,
 						"The current map has changed since it was last saved.\n"
@@ -1517,11 +1611,17 @@ qboolean ConfirmModified() {
 	switch( saveChoice ) {
 	case IDYES: {
 		g_pParentWnd->OnFileSave();
+		if ( g_pGameDescription->mGameFile == SCGHOST_GAME && modified ) {
+			return FALSE;
+		}
+
 		break;
 	}
+
 	case IDNO: {
 		return TRUE;
 	}
+
 	case IDCANCEL:
 	default: {
 		return FALSE;
@@ -1551,6 +1651,7 @@ void ProjectDialog(){
 		return; // canceled
 
 	}
+
 	// Open the file.
 	// NOTE: QE_LoadProject takes care of saving prefs with new path to the project file
 	if ( !QE_LoadProject( filename ) ) {
@@ -1578,6 +1679,12 @@ void ProjectDialog(){
  */
 char *bsp_commands[256];
 
+void DoNodConvert();
+
+static void NodConvert_Activate( GtkWidget *, gpointer ){
+	DoNodConvert();
+}
+
 void FillBSPMenu(){
 	GtkWidget *item, *menu; // menu points to a GtkMenu (not an item)
 	epair_t *ep;
@@ -1592,6 +1699,7 @@ void FillBSPMenu(){
 		{
 			gtk_container_remove( GTK_CONTAINER( menu ), GTK_WIDGET( lst->data ) );
 		}
+
 		g_list_free( children );
 	}
 
@@ -1608,9 +1716,11 @@ void FillBSPMenu(){
 		strcpy( cTemp, str );
 		char* token = strtok( cTemp, ",;" );
 		if ( token && *token == ' ' ) {
-			while ( *token == ' ' )
+			while ( *token == ' ' ) {
 				token++;
 		}
+		}
+
 		i = 0;
 
 		// first token is menu name
@@ -1619,8 +1729,10 @@ void FillBSPMenu(){
 			if( g_list_first( children ) ) {
 				gtk_label_set_text( GTK_LABEL( g_list_first( children )->data ), token );
 			}
+
 			g_list_free( children );
 		}
+
 		token = strtok( NULL, ",;" );
 		while ( token != NULL )
 		{
@@ -1650,6 +1762,19 @@ void FillBSPMenu(){
 			}
 		}
 	}
+
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+		children = gtk_container_get_children( GTK_CONTAINER( menu ) );
+		if ( children ) {
+			menu_separator( menu );
+			g_list_free( children );
+		}
+
+		item = gtk_menu_item_new_with_label( _( "Convert NOD level..." ) );
+		gtk_menu_shell_append( GTK_MENU_SHELL( menu ), item );
+		g_signal_connect( item, "activate", G_CALLBACK( NodConvert_Activate ), NULL );
+		gtk_widget_show( item );
+	}
 }
 
 //==============================================
@@ -1670,14 +1795,17 @@ bool ExtractPath_and_Filename( const char* pPath, CString& strPath, CString& str
 		// TTimo: try forward slash, some are using forward
 		nSlash = strPathName.ReverseFind( '/' );
 	}
+
 	if ( nSlash >= 0 ) {
 		strPath = strPathName.Left( nSlash + 1 );
 		strFilename = strPathName.Right( strPathName.GetLength() - nSlash - 1 );
 	}
+
 	// TTimo: try forward slash, some are using forward
 	else{
 		strFilename = pPath;
 	}
+
 	return true;
 }
 
@@ -1701,6 +1829,7 @@ char *TranslateString( char *buf ){
 			*out++ = buf[i];
 		}
 	}
+
 	*out++ = 0;
 
 	return buf2;
@@ -1805,6 +1934,7 @@ extern "C" void Sys_FPrintf_VA( int level, const char *text, va_list args ) {
 			default:
 				break;
 			}
+
 			gtk_text_buffer_insert_with_tags( buffer, &iter, buf, length, tag, (char *) NULL );
 
 			gtk_text_view_scroll_mark_onscreen( GTK_TEXT_VIEW( g_qeglobals_gui.d_edit ), end );
@@ -1813,8 +1943,9 @@ extern "C" void Sys_FPrintf_VA( int level, const char *text, va_list args ) {
 			if ( !g_bScreenUpdates && gtk_widget_get_realized( g_qeglobals_gui.d_edit ) ) {
 				gtk_grab_add( g_qeglobals_gui.d_edit );
 
-				while ( gtk_events_pending() )
+				while ( gtk_events_pending() ) {
 					gtk_main_iteration();
+				}
 
 				gtk_grab_remove( g_qeglobals_gui.d_edit );
 			}

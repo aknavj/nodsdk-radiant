@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: shaders.h
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (c) 2001, Loki software, inc.
    All rights reserved.
 
@@ -45,6 +71,7 @@ class CShader : public IShader
 {
 int refCount;
 qtexture_t *m_pTexture;
+bool m_bActivationFailed;
 // name is shader / texture name (if not a real shader) relative to "textures/" directory
 char m_Name[QER_MAX_NAMELEN];
 char m_ShaderFileName[QER_MAX_NAMELEN];
@@ -71,7 +98,7 @@ int m_nCull;
 void RegisterActivate();
 
 public:
-CShader() { refCount = 0; m_pTexture = NULL; m_Name[0] = '\0'; m_ShaderFileName[0] = '\0'; m_nFlags = 0; m_bInUse = false; m_bDisplayed = false; m_bColor = false; m_fTrans = 1.0f; m_nAlphaFunc = 0; m_fAlphaRef = 0.f; m_nCull = 0; }
+CShader() { refCount = 0; m_pTexture = NULL; m_bActivationFailed = false; m_Name[0] = '\0'; m_ShaderFileName[0] = '\0'; m_nFlags = 0; m_bInUse = false; m_bDisplayed = false; m_bColor = false; m_fTrans = 1.0f; m_nAlphaFunc = 0; m_fAlphaRef = 0.f; m_nCull = 0; }
 virtual ~CShader() { }
 
 // IShaders implementation -----------------
@@ -83,9 +110,10 @@ void DecRef(){
 		delete this;
 	}
 }
+
 // get/set the qtexture_t* Radiant uses to represent this shader object
 qtexture_t* getTexture() const { return m_pTexture; }
-void setTexture( qtexture_t *pTex ) { m_pTexture = pTex; }
+void setTexture( qtexture_t *pTex ) { m_pTexture = pTex; m_bActivationFailed = false; }
 // get shader name
 const char* getName() const { return m_Name; }
 bool IsDisplayed() const { return m_bDisplayed; }
@@ -96,10 +124,12 @@ void SetInUse( bool b ) {
 	m_bInUse = b; if ( m_pTexture ) {
 		m_pTexture->inuse = true;
 	}
+
 	if ( b ) {
 		m_bDisplayed = true;
 	}
 }
+
 // get the shader flags
 int getFlags() { return m_nFlags; }
 // get the transparency value
@@ -126,7 +156,7 @@ bool Parse();
 // if m_strTextureName could not be loaded will set m_pTexture to NULL
 void Try_Activate();
 // if m_strTextureName could not be loaded will use a default qtexture
-// FIXME TTimo: Activate forces activation, always true
+// Activation results are cached until an explicit retry or shader refresh.
 bool Activate();
 
 // set shader name
