@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: undo.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -38,6 +64,7 @@
  */
 
 #include "stdafx.h"
+#include "nodmodelbundle.h"
 
 typedef struct undo_s
 {
@@ -88,13 +115,16 @@ void Undo_ClearRedo( void ){
 			pNextBrush = pBrush->next;
 			Brush_Free( pBrush );
 		}
+
 		for ( pEntity = redo->entitylist.next; pEntity != NULL && pEntity != &redo->entitylist; pEntity = pNextEntity )
 		{
 			pNextEntity = pEntity->next;
 			Entity_Free( pEntity );
 		}
+
 		free( redo );
 	}
+
 	g_redolist = NULL;
 	g_lastredo = NULL;
 	g_redoId = 1;
@@ -122,15 +152,18 @@ void Undo_Clear( void ){
 			g_undoMemorySize -= Brush_MemorySize( pBrush );
 			Brush_Free( pBrush );
 		}
+
 		for ( pEntity = undo->entitylist.next; pEntity != NULL && pEntity != &undo->entitylist; pEntity = pNextEntity )
 		{
 			pNextEntity = pEntity->next;
 			g_undoMemorySize -= Entity_MemorySize( pEntity );
 			Entity_Free( pEntity );
 		}
+
 		g_undoMemorySize -= sizeof( undo_t );
 		free( undo );
 	}
+
 	g_undolist = NULL;
 	g_lastundo = NULL;
 	g_undoSize = 0;
@@ -203,12 +236,14 @@ void Undo_FreeFirstUndo( void ){
 		g_undoMemorySize -= Brush_MemorySize( pBrush );
 		Brush_Free( pBrush );
 	}
+
 	for ( pEntity = undo->entitylist.next; pEntity != NULL && pEntity != &undo->entitylist; pEntity = pNextEntity )
 	{
 		pNextEntity = pEntity->next;
 		g_undoMemorySize -= Entity_MemorySize( pEntity );
 		Entity_Free( pEntity );
 	}
+
 	g_undoMemorySize -= sizeof( undo_t );
 	free( undo );
 	g_undoSize--;
@@ -235,6 +270,7 @@ void Undo_GeneralStart( const char *operation ){
 	if ( !undo ) {
 		return;
 	}
+
 	memset( undo, 0, sizeof( undo_t ) );
 	undo->brushlist.next = &undo->brushlist;
 	undo->brushlist.prev = &undo->brushlist;
@@ -246,6 +282,7 @@ void Undo_GeneralStart( const char *operation ){
 	else{
 		g_undolist = undo;
 	}
+
 	undo->prev = g_lastundo;
 	undo->next = NULL;
 	g_lastundo = undo;
@@ -255,9 +292,11 @@ void Undo_GeneralStart( const char *operation ){
 	if ( g_undoId > g_undoMaxSize * 2 ) {
 		g_undoId = 1;
 	}
+
 	if ( g_undoId <= 0 ) {
 		g_undoId = 1;
 	}
+
 	undo->id = g_undoId++;
 	undo->done = false;
 	undo->operation = operation;
@@ -268,12 +307,14 @@ void Undo_GeneralStart( const char *operation ){
 			pBrush->undoId = 0;
 		}
 	}
+
 	for ( pBrush = selected_brushes.next; pBrush != NULL && pBrush != &selected_brushes; pBrush = pBrush->next )
 	{
 		if ( pBrush->undoId == undo->id ) {
 			pBrush->undoId = 0;
 		}
 	}
+
 	//reset the undo IDs of all entities using thew new ID
 	for ( pEntity = entities.next; pEntity != NULL && pEntity != &entities; pEntity = pEntity->next )
 	{
@@ -281,6 +322,7 @@ void Undo_GeneralStart( const char *operation ){
 			pEntity->undoId = 0;
 		}
 	}
+
 	g_undoMemorySize += sizeof( undo_t );
 	g_undoSize++;
 	//undo buffer is bound to a max
@@ -323,6 +365,7 @@ int Undo_EntityInUndo( undo_t *undo, entity_t *ent ){
 			return true;
 		}
 	}
+
 	return false;
 }
 
@@ -362,13 +405,16 @@ void Undo_AddBrush( brush_t *pBrush ){
 		Sys_Printf( "Undo_AddBrushList: no last undo.\n" );
 		return;
 	}
+
 	if ( g_lastundo->entitylist.next != &g_lastundo->entitylist ) {
 		Sys_FPrintf( SYS_WRN, "WARNING adding brushes after entity.\n" );
 	}
+
 	//if the brush is already in the undo
 	if ( Undo_BrushInUndo( g_lastundo, pBrush ) ) {
 		return;
 	}
+
 	//clone the brush
 	brush_t* pClone = Brush_FullClone( pBrush );
 	//save the ID of the owner entity
@@ -405,9 +451,11 @@ void Undo_AddBrushList( brush_t *brushlist ){
 		Sys_Printf( "Undo_AddBrushList: no last undo.\n" );
 		return;
 	}
+
 	if ( g_lastundo->entitylist.next != &g_lastundo->entitylist ) {
 		Sys_FPrintf( SYS_WRN, "WARNING adding brushes after entity.\n" );
 	}
+
 	//copy the brushes to the undo
 	for ( pBrush = brushlist->next ; pBrush != NULL && pBrush != brushlist; pBrush = pBrush->next )
 	{
@@ -416,6 +464,7 @@ void Undo_AddBrushList( brush_t *brushlist ){
 		if ( Undo_BrushInUndo( g_lastundo, pBrush ) ) {
 			continue;
 		}
+
 		// do we need to store this brush's entity in the undo?
 		// if it's a fixed size entity, the brush that reprents it is not really relevant, it's used for selecting and moving around
 		// what we want to store for undo is the owner entity, epairs and origin/angle stuff
@@ -423,6 +472,7 @@ void Undo_AddBrushList( brush_t *brushlist ){
 		if ( pBrush->owner->eclass->fixedsize == 1 ) {
 			Undo_AddEntity( pBrush->owner );
 		}
+
 		// clone the brush
 		brush_t* pClone = Brush_FullClone( pBrush );
 		// save the ID of the owner entity
@@ -454,10 +504,12 @@ void Undo_EndBrush( brush_t *pBrush ){
 		//Sys_Printf("Undo_End: no last undo.\n");
 		return;
 	}
+
 	if ( g_lastundo->done ) {
 		//Sys_Printf("Undo_End: last undo already finished.\n");
 		return;
 	}
+
 	pBrush->undoId = g_lastundo->id;
 }
 
@@ -480,10 +532,12 @@ void Undo_EndBrushList( brush_t *brushlist ){
 		//Sys_Printf("Undo_End: no last undo.\n");
 		return;
 	}
+
 	if ( g_lastundo->done ) {
 		//Sys_Printf("Undo_End: last undo already finished.\n");
 		return;
 	}
+
 	for ( brush_t* pBrush = brushlist->next; pBrush != NULL && pBrush != brushlist; pBrush = pBrush->next )
 	{
 		pBrush->undoId = g_lastundo->id;
@@ -515,10 +569,12 @@ void Undo_AddEntity( entity_t *entity ){
 		Sys_Printf( "Undo_AddEntity: no last undo.\n" );
 		return;
 	}
+
 	//if the entity is already in the undo
 	if ( Undo_EntityInUndo( g_lastundo, entity ) ) {
 		return;
 	}
+
 	//clone the entity
 	pClone = Entity_Clone( entity );
 	//save the old undo ID for previous undos
@@ -552,18 +608,21 @@ void Undo_EndEntity( entity_t *entity ){
 #endif
 		return;
 	}
+
 	if ( g_lastundo->done ) {
 #ifdef _DEBUG
 		Sys_Printf( "Undo_End: last undo already finished.\n" );
 #endif
 		return;
 	}
+
 	if ( entity == world_entity ) {
 		//Sys_Printf("Undo_AddEntity: undo on world entity.\n");
 		//NOTE: we never delete the world entity when undoing an operation
 		//		we only transfer the epairs
 		return;
 	}
+
 	entity->undoId = g_lastundo->id;
 }
 
@@ -586,10 +645,12 @@ void Undo_End( void ){
 		//Sys_Printf("Undo_End: no last undo.\n");
 		return;
 	}
+
 	if ( g_lastundo->done ) {
 		//Sys_Printf("Undo_End: last undo already finished.\n");
 		return;
 	}
+
 	g_lastundo->done = true;
 
 	//undo memory size is bound to a max
@@ -599,8 +660,10 @@ void Undo_End( void ){
 		if ( g_undolist == g_lastundo ) {
 			break;
 		}
+
 		Undo_FreeFirstUndo();
 	}
+
 	//
 	//Sys_Printf("undo size = %d, undo memory = %d\n", g_undoSize, g_undoMemorySize);
 }
@@ -620,14 +683,17 @@ void Undo_Undo( qboolean bSilent ){
 	undo_t *undo, *redo;
 	brush_t *pBrush, *pNextBrush;
 	entity_t *pEntity, *pNextEntity, *pUndoEntity;
+	bool refreshNodModels = false;
 
 	if ( !g_lastundo ) {
 		Sys_Printf( "Nothing left to undo.\n" );
 		return;
 	}
+
 	if ( !g_lastundo->done ) {
 		Sys_FPrintf( SYS_WRN, "WARNING: last undo not yet finished!\n" );
 	}
+
 	// get the last undo
 	undo = g_lastundo;
 	if ( g_lastundo->prev ) {
@@ -641,6 +707,7 @@ void Undo_Undo( qboolean bSilent ){
 	if ( !redo ) {
 		return;
 	}
+
 	memset( redo, 0, sizeof( undo_t ) );
 	redo->brushlist.next = &redo->brushlist;
 	redo->brushlist.prev = &redo->brushlist;
@@ -665,12 +732,14 @@ void Undo_Undo( qboolean bSilent ){
 			pBrush->redoId = 0;
 		}
 	}
+
 	for ( pBrush = selected_brushes.next; pBrush != NULL && pBrush != &selected_brushes; pBrush = pBrush->next )
 	{
 		if ( pBrush->redoId == redo->id ) {
 			pBrush->redoId = 0;
 		}
 	}
+
 	//reset the redo IDs of all entities using thew new ID
 	for ( pEntity = entities.next; pEntity != NULL && pEntity != &entities; pEntity = pEntity->next )
 	{
@@ -696,6 +765,7 @@ void Undo_Undo( qboolean bSilent ){
 			Entity_UnlinkBrush( pBrush );
 		}
 	}
+
 	// move "created" entities to the redo
 	for ( pEntity = entities.next; pEntity != NULL && pEntity != &entities; pEntity = pNextEntity )
 	{
@@ -712,6 +782,7 @@ void Undo_Undo( qboolean bSilent ){
 					pEntity->brushes.prev = &pEntity->brushes;
 				}
 			}
+
 			//
 			//Entity_Free(pEntity);
 			//move the entity to the redo
@@ -719,16 +790,20 @@ void Undo_Undo( qboolean bSilent ){
 			Entity_AddToList( pEntity, &redo->entitylist );
 		}
 	}
+
 	// add the undo entities back into the entity list
 	for ( pEntity = undo->entitylist.next; pEntity != NULL && pEntity != &undo->entitylist; pEntity = undo->entitylist.next )
 	{
 		g_undoMemorySize -= Entity_MemorySize( pEntity );
 		//if this is the world entity
 		if ( pEntity->entityId == world_entity->entityId ) {
+			const std::string previousBundle = ValueForKey( world_entity, "nod_model_bundle" );
 			epair_t* tmp = world_entity->epairs;
 			world_entity->epairs = pEntity->epairs;
 			pEntity->epairs = tmp;
-			Entity_Free( pEntity );
+			Entity_RemoveFromList( pEntity );
+			Entity_AddToList( pEntity, &redo->entitylist );
+			refreshNodModels = previousBundle != ValueForKey( world_entity, "nod_model_bundle" );
 		}
 		else
 		{
@@ -737,6 +812,7 @@ void Undo_Undo( qboolean bSilent ){
 			pEntity->redoId = redo->id;
 		}
 	}
+
 	// add the undo brushes back into the selected brushes
 	for ( pBrush = undo->brushlist.next; pBrush != NULL && pBrush != &undo->brushlist; pBrush = undo->brushlist.next )
 	{
@@ -752,19 +828,23 @@ void Undo_Undo( qboolean bSilent ){
 				break;
 			}
 		}
+
 		//if the brush is not linked then it should be linked into the world entity
 		//++timo FIXME: maybe not, maybe we've lost this entity's owner!
 		if ( pEntity == NULL || pEntity == &entities ) {
 			Entity_LinkBrush( world_entity, pBrush );
 		}
+
 		//build the brush
 		//Brush_Build(pBrush);
 		Select_Brush( pBrush );
 		pBrush->redoId = redo->id;
 	}
+
 	if ( !bSilent ) {
 		Sys_Printf( "%s undone.\n", undo->operation );
 	}
+
 	// free the undo
 	g_undoMemorySize -= sizeof( undo_t );
 	free( undo );
@@ -773,6 +853,11 @@ void Undo_Undo( qboolean bSilent ){
 	if ( g_undoId <= 0 ) {
 		g_undoId = 2 * g_undoMaxSize;
 	}
+
+	if ( refreshNodModels ) {
+		NodModelBundle_Refresh( &entities, ValueForKey( world_entity, "nod_model_bundle" ) );
+	}
+
 	//
 	g_bScreenUpdates = true;
 	UpdateSurfaceDialog();
@@ -794,16 +879,19 @@ void Undo_Redo( void ){
 	undo_t *redo;
 	brush_t *pBrush, *pNextBrush;
 	entity_t *pEntity, *pNextEntity, *pRedoEntity;
+	bool refreshNodModels = false;
 
 	if ( !g_lastredo ) {
 		Sys_Printf( "Nothing left to redo.\n" );
 		return;
 	}
+
 	if ( g_lastundo ) {
 		if ( !g_lastundo->done ) {
 			Sys_FPrintf( SYS_WRN, "WARNING: last undo not finished.\n" );
 		}
 	}
+
 	// get the last redo
 	redo = g_lastredo;
 	if ( g_lastredo->prev ) {
@@ -828,6 +916,7 @@ void Undo_Redo( void ){
 			Entity_UnlinkBrush( pBrush );
 		}
 	}
+
 	// move "created" entities back to the last undo
 	for ( pEntity = entities.next; pEntity != NULL && pEntity != &entities; pEntity = pNextEntity )
 	{
@@ -844,6 +933,7 @@ void Undo_Redo( void ){
 					pEntity->brushes.prev = &pEntity->brushes;
 				}
 			}
+
 			//
 			//Entity_Free(pEntity);
 			//move the entity to the redo
@@ -852,15 +942,20 @@ void Undo_Redo( void ){
 			g_undoMemorySize += Entity_MemorySize( pEntity );
 		}
 	}
+
 	// add the undo entities back into the entity list
 	for ( pEntity = redo->entitylist.next; pEntity != NULL && pEntity != &redo->entitylist; pEntity = redo->entitylist.next )
 	{
 		//if this is the world entity
 		if ( pEntity->entityId == world_entity->entityId ) {
+			const std::string previousBundle = ValueForKey( world_entity, "nod_model_bundle" );
 			epair_t* tmp = world_entity->epairs;
 			world_entity->epairs = pEntity->epairs;
 			pEntity->epairs = tmp;
-			Entity_Free( pEntity );
+			Entity_RemoveFromList( pEntity );
+			Entity_AddToList( pEntity, &g_lastundo->entitylist );
+			g_undoMemorySize += Entity_MemorySize( pEntity );
+			refreshNodModels = previousBundle != ValueForKey( world_entity, "nod_model_bundle" );
 		}
 		else
 		{
@@ -868,6 +963,7 @@ void Undo_Redo( void ){
 			Entity_AddToList( pEntity, &entities );
 		}
 	}
+
 	// add the redo brushes back into the selected brushes
 	for ( pBrush = redo->brushlist.next; pBrush != NULL && pBrush != &redo->brushlist; pBrush = redo->brushlist.next )
 	{
@@ -880,14 +976,17 @@ void Undo_Redo( void ){
 				break;
 			}
 		}
+
 		//if the brush is not linked then it should be linked into the world entity
 		if ( pEntity == NULL || pEntity == &entities ) {
 			Entity_LinkBrush( world_entity, pBrush );
 		}
+
 		//build the brush
 		//Brush_Build(pBrush);
 		Select_Brush( pBrush );
 	}
+
 	//
 	Undo_End();
 	//
@@ -896,6 +995,10 @@ void Undo_Redo( void ){
 	g_redoId--;
 	// free the undo
 	free( redo );
+	if ( refreshNodModels ) {
+		NodModelBundle_Refresh( &entities, ValueForKey( world_entity, "nod_model_bundle" ) );
+	}
+
 	//
 	g_bScreenUpdates = true;
 	UpdateSurfaceDialog();
@@ -911,6 +1014,7 @@ int Undo_RedoAvailable( void ){
 	if ( g_lastredo ) {
 		return true;
 	}
+
 	return false;
 }
 
@@ -918,6 +1022,7 @@ int Undo_GetUndoId( void ){
 	if ( g_lastundo ) {
 		return g_lastundo->id;
 	}
+
 	return 0;
 }
 
@@ -932,5 +1037,6 @@ int Undo_UndoAvailable( void ){
 			return true;
 		}
 	}
+
 	return false;
 }

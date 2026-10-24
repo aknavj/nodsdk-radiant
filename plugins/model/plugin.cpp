@@ -1,3 +1,28 @@
+/*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: plugin.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
 
 /*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
@@ -21,6 +46,8 @@
  */
 
 #include "plugin.h"
+#include "nodmodel.h"
+#include "nodmodel.h"
 
 // toolbar implementation
 
@@ -30,15 +57,19 @@ public:
 virtual const char* getImage() const {
 	return "model_reload_entity.bmp";
 }
+
 virtual const char* getText() const {
 	return "Reload";
 }
+
 virtual const char* getTooltip() const {
 	return "Flush & Reload Selected Model";
 }
+
 virtual void activate() const {
 	DoFlushReloadSelected();
 }
+
 virtual EType getType() const {
 	return eButton;
 }
@@ -63,6 +94,7 @@ void PicoPrintFunc( int level, const char *str ){
 	if ( str == NULL ) {
 		return;
 	}
+
 	switch ( level )
 	{
 	case PICO_NORMAL:
@@ -105,33 +137,44 @@ static void initialise(){
 }
 
 static void add_model_apis( CSynapseClient& client ){
+	client.AddAPI( MODEL_MAJOR, "nod", sizeof( _QERPlugModelTable ) );
+	client.AddAPI( MODEL_MAJOR, "nmb", sizeof( _QERPlugModelTable ) );
 	const picoModule_t** modules = PicoModuleList( NULL );
 	while ( *modules != NULL )
 	{
 		const picoModule_t* module = *modules++;
 		if ( module->canload && module->load ) {
-			for ( unsigned int j = 0; module->defaultExts[j] != NULL; j++ )
+			for ( unsigned int j = 0; module->defaultExts[j] != NULL; j++ ) {
 				client.AddAPI( MODEL_MAJOR, module->defaultExts[j], sizeof( _QERPlugModelTable ) );
 		}
 	}
 }
+}
 
 static bool model_is_supported( const char* extension ){
+	if ( NodModelExtensionSupported( extension ) ) {
+		return true;
+	}
+
 	const picoModule_t** modules = PicoModuleList( NULL );
 	while ( *modules != NULL )
 	{
 		const picoModule_t* module = *modules++;
 		if ( module->canload && module->load ) {
-			for ( unsigned int j = 0; module->defaultExts[j] != NULL; j++ )
+			for ( unsigned int j = 0; module->defaultExts[j] != NULL; j++ ) {
 				if ( strcmp( extension, module->defaultExts[j] ) == 0 ) {
 					return true;
 				}
 		}
 	}
+	}
+
 	return false;
 }
 
 void init_filetypes(){
+	GetFileTypeRegistry()->addType( MODEL_MAJOR, filetype_t( "NOD rest-pose model", "*.nod" ) );
+	GetFileTypeRegistry()->addType( MODEL_MAJOR, filetype_t( "NMB model bundle", "*.nmb" ) );
 	const picoModule_t **modules = PicoModuleList( NULL );
 	while ( *modules != NULL )
 	{
@@ -191,6 +234,7 @@ extern "C" void QERPlug_Dispatch( const char *p, vec3_t vMin, vec3_t vMax, bool 
 			strncat( about_buf, module->copyright, sizeof( about_buf ) - 1 );
 			strncat( about_buf, "\n", sizeof( about_buf ) - 1 );
 		}
+
 		g_FuncTable.m_pfnMessageBox( g_pMainWidget, about_buf, "About", MB_OK, NULL );
 	}
 }
@@ -200,6 +244,7 @@ void DoFlushReloadSelected() {
 }
 
 void DoFlushReloadAll() {
+	NodModelClearReferenceCache();
 	GetModelCache()->RefreshAll();
 }
 
@@ -233,6 +278,7 @@ extern "C" CSynapseClient * SYNAPSE_DLL_EXPORT Synapse_EnumerateInterfaces( cons
 		Syn_Printf( "ERROR: synapse API version mismatch: should be '" SYNAPSE_VERSION "', got '%s'\n", version );
 		return NULL;
 	}
+
 	g_pSynapseServer = pServer;
 	g_pSynapseServer->IncRef();
 	Set_Syn_Printf( g_pSynapseServer->Get_Syn_Printf() );
@@ -240,6 +286,7 @@ extern "C" CSynapseClient * SYNAPSE_DLL_EXPORT Synapse_EnumerateInterfaces( cons
 	initialise();
 
 	add_model_apis( g_SynapseClient );
+	g_SynapseClient.AddAPI( NOD_MODEL_MAJOR, NOD_MODEL_VERSION, sizeof( _QERNodModelTable ) );
 	g_SynapseClient.AddAPI( TOOLBAR_MAJOR, "model", sizeof( _QERPlugToolbarTable ) );
 	g_SynapseClient.AddAPI( PLUGIN_MAJOR, "model", sizeof( _QERPluginTable ) );
 
@@ -254,7 +301,13 @@ extern "C" CSynapseClient * SYNAPSE_DLL_EXPORT Synapse_EnumerateInterfaces( cons
 }
 
 bool CSynapseClientModel::RequestAPI( APIDescriptor_t *pAPI ){
-	if ( !strcmp( pAPI->major_name, MODEL_MAJOR ) ) {
+	if ( !strcmp( pAPI->major_name, NOD_MODEL_MAJOR ) && !strcmp( pAPI->minor_name, NOD_MODEL_VERSION ) ) {
+		_QERNodModelTable *table = static_cast<_QERNodModelTable *>( pAPI->mpTable );
+		table->m_pfnCatalog = NodModel_Catalog;
+		table->m_pfnCheck = NodModel_Check;
+		return true;
+	}
+	else if ( !strcmp( pAPI->major_name, MODEL_MAJOR ) ) {
 		_QERPlugModelTable* pTable = static_cast<_QERPlugModelTable*>( pAPI->mpTable );
 
 		if ( model_is_supported( pAPI->minor_name ) ) {

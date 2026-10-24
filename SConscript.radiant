@@ -10,6 +10,7 @@ Import( [ 'utils', 'config', 'settings', 'lib_objects' ] )
 
 env = Environment( ENV = os.environ )
 settings.SetupEnvironment( env, config[ 'name' ], useGtk = True, useGtkGL = True )
+env.ParseConfig( 'pkg-config gthread-2.0 --cflags --libs' )
 
 if ( platform.system() not in ['FreeBSD', 'OpenBSD', 'NetBSD'] ):
 	env.Append( LIBS = [ 'dl' ] )

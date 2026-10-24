@@ -27,8 +27,11 @@ def get_version():
   line = buffer.split('\n')[0]
   f.close()
   sys.stdout.write("version: %s\n" % line)
-  exp = re.compile('^1\\.([^\\.]*)\\.([0-9]*)')
-  (major, minor) = exp.findall(line)[0]
+  match = re.fullmatch(r'[0-9]+\.([0-9]+)\.([0-9]+)', line)
+  if match is None:
+    raise ValueError("Expected a numeric major.minor.patch version in include/version.default")
+  # Legacy setup markers use the second and third version components.
+  (major, minor) = match.groups()
   sys.stdout.write("minor: %s major: %s\n" % (minor, major))
   return (line, major, minor)  
 

@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: surfaceplugin.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -25,6 +51,7 @@
 // implementation of isurfaceplugin-interface specifics
 
 #include "stdafx.h"
+#include "nodsurface.h"
 
 void QERApp_GetTwoSelectedPatch( patchMesh_t **p1, patchMesh_t **p2 ){
 	*p1 = NULL; *p2 = NULL;
@@ -58,10 +85,12 @@ int SI_GetSelectedFaceCountfromBrushes( void ){
 		return( 0 );
 	}
 
-	for ( b = selected_brushes.next; b != &selected_brushes; b = b->next )
+	for ( b = selected_brushes.next; b != &selected_brushes; b = b->next ) {
 		if ( !( b->patchBrush ) ) {
-			for ( f = b->brush_faces; f ; f = f->next, num_of_faces++ ) ;
+			for ( f = b->brush_faces; f ; f = f->next, num_of_faces++ ) {
+			}
 		}
+	}
 
 	return num_of_faces;
 }
@@ -88,11 +117,13 @@ void SI_GetSelFacesTexdef( texdef_to_face_t *allocd_block_texdef ){
 						TexMatToFakeTexCoords( bp.coords, position->texdef.shift, &position->texdef.rotate, position->texdef.scale );
 						position->orig_bp_texdef = bp;
 					}
+
 					position->orig_texdef = position->texdef;
 					prev_pos->next = position;
 					prev_pos = position;
 					position++;
 				}
+
 				prev_pos->next = NULL;
 			}
 		}
@@ -109,6 +140,7 @@ void SI_GetSelFacesTexdef( texdef_to_face_t *allocd_block_texdef ){
 			TexMatToFakeTexCoords( bp.coords, position->texdef.shift, &position->texdef.rotate, position->texdef.scale );
 			position->orig_bp_texdef = bp;
 		}
+
 		position->orig_texdef = position->texdef;
 		prev_pos = position;
 		for ( i = 1; i < g_ptrSelectedFaces.GetSize(); i++ )
@@ -124,10 +156,12 @@ void SI_GetSelFacesTexdef( texdef_to_face_t *allocd_block_texdef ){
 				TexMatToFakeTexCoords( bp.coords, position->texdef.shift, &position->texdef.rotate, position->texdef.scale );
 				position->orig_bp_texdef = bp;
 			}
+
 			position->orig_texdef = position->texdef;
 			prev_pos->next = position;
 			prev_pos = position;
 		}
+
 		position->next = NULL;
 	}
 
@@ -180,11 +214,31 @@ void SI_SetTexdef_FaceList( texdef_to_face_t* texdef_face_list, bool b_SetUndoPo
 		return;
 	}
 
+	const bool nod = NodSurface_IsProfile( g_pGameDescription->mGameFile );
+	std::vector<brush_t *> nodBrushes;
+	if ( nod ) {
+		bool changed = false;
+		for ( texdef_to_face = texdef_face_list; texdef_to_face; texdef_to_face = texdef_to_face->next ) {
+			if ( !NodSurface_Equal( texdef_to_face->texdef,
+					b_SetUndoPoint ? texdef_to_face->orig_texdef : texdef_to_face->face->texdef ) ) {
+				changed = true;
+			}
+
+			if ( std::find( nodBrushes.begin(), nodBrushes.end(), texdef_to_face->brush ) == nodBrushes.end() ) {
+				nodBrushes.push_back( texdef_to_face->brush );
+		}
+		}
+
+		if ( !changed && !bFit_to_Scale ) {
+			return;
+	}
+	}
+
 	if ( b_SetUndoPoint ) {
-		if ( g_ptrSelectedFaces.GetSize() > 1 ) {
+		if ( !nod && g_ptrSelectedFaces.GetSize() > 1 ) {
 			Sys_FPrintf( SYS_WRN, "WARNING: Undo NOT supported for multiple face selections\n" );
 		}
-		else if ( ( selected_brushes.next != &selected_brushes ) || ( g_ptrSelectedFaces.GetSize() == 1 ) ) {
+		else if ( nod || ( selected_brushes.next != &selected_brushes ) || ( g_ptrSelectedFaces.GetSize() == 1 ) ) {
 			// Give something to undo to
 			for ( texdef_to_face = texdef_face_list; texdef_to_face; texdef_to_face = texdef_to_face->next ) {
 				SetFaceTexdef( texdef_to_face->face, &texdef_to_face->orig_texdef, &texdef_to_face->orig_bp_texdef, bFit_to_Scale );
@@ -192,7 +246,11 @@ void SI_SetTexdef_FaceList( texdef_to_face_t* texdef_face_list, bool b_SetUndoPo
 
 			Undo_Start( "set facelist texdefs" );
 
-			if ( selected_brushes.next != &selected_brushes ) {
+			if ( nod ) {
+				for ( size_t i = 0; i < nodBrushes.size(); ++i ) {
+					Undo_AddBrush( nodBrushes[i] );
+			}
+			} else if ( selected_brushes.next != &selected_brushes ) {
 				Undo_AddBrushList( &selected_brushes );
 			}
 			else {
@@ -208,6 +266,7 @@ void SI_SetTexdef_FaceList( texdef_to_face_t* texdef_face_list, bool b_SetUndoPo
 			FakeTexCoordsToTexMat( texdef_to_face->texdef.shift, texdef_to_face->texdef.rotate, texdef_to_face->texdef.scale, brushprimit_texdef.coords );
 			SetFaceTexdef( texdef_to_face->face, &texdef_to_face->texdef, &brushprimit_texdef, bFit_to_Scale, NULL, true, false );
 		}
+
 		Brush_Build( texdef_to_face->brush );
 		if ( bFit_to_Scale ) {
 			texdef_to_face->texdef = texdef_to_face->face->texdef;
@@ -215,8 +274,12 @@ void SI_SetTexdef_FaceList( texdef_to_face_t* texdef_face_list, bool b_SetUndoPo
 	}
 
 	if ( b_SetUndoPoint ) {
-		if ( ( selected_brushes.next != &selected_brushes ) || ( g_ptrSelectedFaces.GetSize() == 1 ) ) {
-			if ( selected_brushes.next != &selected_brushes ) {
+		if ( nod || ( selected_brushes.next != &selected_brushes ) || ( g_ptrSelectedFaces.GetSize() == 1 ) ) {
+			if ( nod ) {
+				for ( size_t i = 0; i < nodBrushes.size(); ++i ) {
+					Undo_EndBrush( nodBrushes[i] );
+			}
+			} else if ( selected_brushes.next != &selected_brushes ) {
 				Undo_EndBrushList( &selected_brushes );
 			}
 			else{
@@ -231,6 +294,10 @@ void SI_SetTexdef_FaceList( texdef_to_face_t* texdef_face_list, bool b_SetUndoPo
 				texdef_to_face->orig_bp_texdef = texdef_to_face->face->brushprimit_texdef;
 			}
 		}
+	}
+
+	if ( nod ) {
+		Sys_MarkMapModified();
 	}
 
 	Sys_UpdateWindows( W_ALL );
@@ -254,6 +321,7 @@ void SI_FaceList_FitTexture( texdef_to_face_t* si_texdef_face_list, int nHeight,
 			ConvertTexMatWithQTexture( &temp_texdef_face_list->face->brushprimit_texdef, QERApp_Shader_ForName( temp_texdef_face_list->face->texdef.GetName() )->getTexture(), &bp, NULL );
 			TexMatToFakeTexCoords( bp.coords, temp_texdef_face_list->face->texdef.shift, &temp_texdef_face_list->face->texdef.rotate, temp_texdef_face_list->face->texdef.scale );
 		}
+
 		temp_texdef_face_list->texdef = temp_texdef_face_list->face->texdef;
 	}
 

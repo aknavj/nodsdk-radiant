@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: remap.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -24,8 +50,14 @@
 
 #include <map>
 #include <vector>
+#include "../../radiant/nodmodelreference.h"
 
-#define RADIANT_ASSERT( condition, message ) if ( !( condition ) ) { Sys_Printf( "ASSERTION FAILURE: " message "\n" ); } else
+#define RADIANT_ASSERT( condition, message ) \
+	do { \
+		if ( !( condition ) ) { \
+			Sys_Printf( "ASSERTION FAILURE: " message "\n" ); \
+		} \
+	} while ( 0 )
 
 template<class key_type, class value_type>
 class cache_element
@@ -38,28 +70,35 @@ inline ~cache_element(){
 		destroy();
 	}
 }
+
 inline value_type* capture( const key_type& key ){
 	if ( ++m_count == 1 ) {
 		construct( key );
 	}
+
 	return m_value;
 }
+
 inline void release(){
 	RADIANT_ASSERT( !empty(), "failed to release reference - not found in cache\n" );
 	if ( --m_count == 0 ) {
 		destroy();
 	}
 }
+
 inline bool empty(){
 	return m_count == 0;
 }
+
 inline void refresh( const key_type& key ){
 	m_value->refresh( key );
 }
+
 private:
 inline void construct( const key_type& key ){
 	m_value = new value_type( key );
 }
+
 inline void destroy(){
 	delete m_value;
 }
@@ -80,6 +119,7 @@ typedef std::map<key_type, elem_type> cache_type;
 value_type* capture( const key_type& key ){
 	return m_cache[key].capture( key );
 }
+
 void release( const key_type& key ){
 	m_cache[key].release();
 }
@@ -116,6 +156,7 @@ RemapWrapper( entity_interfaces_t* model, const char* name )
 
 	construct_shaders();
 }
+
 virtual ~RemapWrapper(){
 	g_model_cache.release( ModelCache::key_type( m_name.GetBuffer(), m_frame ) );
 
@@ -128,28 +169,36 @@ virtual ~RemapWrapper(){
 		remap_t *pRemap = ( *j );
 		delete pRemap;
 	}
+
 	m_remaps.clear();
 }
+
 virtual void IncRef(){
 	++m_refcount;
 }
+
 virtual void DecRef(){
 	if ( --m_refcount == 0 ) {
 		delete this;
 	}
 }
+
 virtual void Draw( int state, int rflags ) const {
 	m_model->Draw( state, m_shaders, rflags );
 }
+
 virtual const bool IsModelNotNull() const {
-	return m_model != NULL;
+	return m_model && m_model->IsModelNotNull();
 }
+
 virtual const aabb_t *GetAABB() const {
 	return m_model->GetAABB();
 }
+
 virtual bool TestRay( const ray_t *ray, vec_t *dist ) const {
 	return m_model->TestRay( ray, dist );
 }
+
 private:
 void add_remap( const char *remap ){
 	const char *ch;
@@ -157,10 +206,11 @@ void add_remap( const char *remap ){
 
 	ch = remap;
 
-	while ( *ch && *ch != ';' )
-		ch++;
+	while ( *ch && *ch != ';' ) {
+			ch++;
+		}
 
-	if ( *ch == '\0' ) {
+		if ( *ch == '\0' ) {
 		// bad remap
 		Sys_FPrintf( SYS_WRN, "WARNING: Shader _remap key found in a model entity without a ; character\n" );
 	}
@@ -244,6 +294,7 @@ void construct_shaders(){
 				shader = QERApp_Shader_ForName( surfShaderName );
 			}
 		}
+
 		// Add reference
 		shader->IncRef();
 		// Done, continue
@@ -261,6 +312,7 @@ inline IShader* shader_for_remap( const char* remap ){
 			break;
 		}
 	}
+
 	return ( i != m_remaps.end() ) ? QERApp_Shader_ForName( pRemap->remap ) : NULL;
 }
 
@@ -288,6 +340,7 @@ ModelWrapper( entity_interfaces_t* model, const char* name )
 	model->pSelect = this;
 	model->pSelect->IncRef();
 }
+
 virtual ~ModelWrapper(){
 	g_model_cache.release( ModelCache::key_type( m_name.GetBuffer(), 0 ) );
 }
@@ -295,20 +348,25 @@ virtual ~ModelWrapper(){
 virtual void IncRef(){
 	++m_refcount;
 }
+
 virtual void DecRef(){
 	if ( --m_refcount == 0 ) {
 		delete this;
 	}
 }
+
 virtual void Draw( int state, int rflags ) const {
 	m_model->Draw( state, rflags );
 }
+
 virtual const bool IsModelNotNull() const {
-	return m_model != NULL;
+	return m_model && m_model->IsModelNotNull();
 }
+
 virtual const aabb_t *GetAABB() const {
 	return m_model->GetAABB();
 }
+
 virtual bool TestRay( const ray_t *ray, vec_t *dist ) const {
 	return m_model->TestRay( ray, dist );
 }
@@ -318,7 +376,8 @@ CPicoModel* m_model;
 };
 
 void LoadModel( entity_interfaces_t* model, const char* name ){
-	if ( strchr( name, ':' ) != NULL || strchr( name, '?' ) != NULL || strchr( name, '&' ) != NULL ) {
+	if ( !NodModelReference_IsRequest( name ) &&
+		( strchr( name, ':' ) != NULL || strchr( name, '?' ) != NULL || strchr( name, '&' ) != NULL ) ) {
 		RemapWrapper* wrapper = new RemapWrapper( model, name );
 		wrapper->DecRef();
 	}

@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: entity_entitymodel.h
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -94,7 +120,7 @@ class CEntityMiscModel : public IRender, public ISelect, public IEdit
 class CEntityEclassModel : public IRender, public ISelect, public IEdit
 {
 	public:
-	CEntityEclassModel();
+	CEntityEclassModel( entity_t *entity = NULL );
 	virtual ~CEntityEclassModel();
 
 	void IncRef() { refCount++; }
@@ -106,7 +132,7 @@ class CEntityEclassModel : public IRender, public ISelect, public IEdit
 
 	// IRender
 	void Draw( int state, int rflags ) const;
-	const bool IsModelNotNull() const { return m_model && m_model->pRender; }
+	const bool IsModelNotNull() const { return m_nativePoint || m_template || ( m_model && m_model->pRender ); }
 	const aabb_t *GetAABB() const { return &m_BBox; }
 
 	// ISelect
@@ -131,6 +157,10 @@ class CEntityEclassModel : public IRender, public ISelect, public IEdit
 	string_t m_name;
 	string_t m_version;
 	const eclass_t *m_eclass;
+	entity_t *m_entity;
+	bool m_nativePoint;
+	bool m_template;
+	float m_lightRadius;
 
 	/*! AABB in local space */
 	aabb_t m_BBox;

@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: xywindow.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -26,6 +52,12 @@
 //
 
 #include "stdafx.h"
+#include "nodlightplacement.h"
+#include "nodtemplateplacement.h"
+#include "nodpathplacement.h"
+#include "nodview.h"
+#include "filters.h"
+#include <map>
 #include <gtk/gtk.h>
 #include <glib/gi18n.h>
 #include <assert.h>
@@ -183,6 +215,7 @@ void WXY_Print(){
 				putc( buf[col + 1], fp );
 				putc( buf[col], fp );
 			}
+
 			byteswritten += row_size;
 
 			unsigned long count;
@@ -260,7 +293,66 @@ float fDiff( float f1, float f2 ){
    Called for both camera view and xy view.
    ==================
  */
-void DrawPathLines( void ){
+static void NodPath_DrawLinks( const float *background ){
+	std::map<std::string, entity_t *> nodes;
+	std::set<std::string> duplicates;
+	for ( entity_t *entity = entities.next; entity != &entities; entity = entity->next ) {
+		if ( NodPath_Authoring( entity ) && strcmp( ValueForKey( entity, "classname" ), "nod_npd_waypoint" ) == 0 ) {
+			const std::string id = ValueForKey( entity, "nod_waypoint_id" );
+			if ( !nodes.insert( std::make_pair( id, entity ) ).second ) {
+				duplicates.insert( id );
+		}
+		}
+	}
+
+	for ( entity_t *link = entities.next; link != &entities; link = link->next ) {
+		if ( !NodPath_Authoring( link ) || strcmp( ValueForKey( link, "classname" ), "nod_npd_link" ) != 0 ) {
+			continue;
+		}
+
+		const std::string from = ValueForKey( link, "nod_from" ), to = ValueForKey( link, "nod_to" );
+		const auto a = nodes.find( from ), b = nodes.find( to );
+		if ( a == nodes.end() || b == nodes.end() || duplicates.count( from ) || duplicates.count( to ) ) {
+			continue;
+		}
+
+		brush_t *ab = a->second->brushes.onext, *bb = b->second->brushes.onext, *lb = link->brushes.onext;
+		if ( ab == &a->second->brushes || bb == &b->second->brushes || lb == &link->brushes ||
+			FilterBrush( ab ) || FilterBrush( bb ) || FilterBrush( lb ) ) {
+			continue;
+		}
+
+		vec3_t direction, tip, left, right;
+		VectorSubtract( b->second->origin, a->second->origin, direction );
+		const float length = VectorNormalize( direction, direction );
+		if ( length <= 0 ) {
+			continue;
+		}
+
+		const float size = length < 1.25f ? length*0.2f : 0.25f;
+		vec3_t side = { -direction[1], direction[0], 0 };
+		if ( VectorNormalize( side, side ) == 0 ) { side[0] = 1; side[1] = side[2] = 0; }
+		for ( int axis = 0; axis < 3; ++axis ) {
+			tip[axis] = a->second->origin[axis]+direction[axis]*length*0.6f;
+			left[axis] = tip[axis]-direction[axis]*size+side[axis]*size*0.5f;
+			right[axis] = tip[axis]-direction[axis]*size-side[axis]*size*0.5f;
+		}
+
+		vec3_t color = { 0.2f, 1.0f, 0.4f };
+		if ( background ) {
+			NodView_WireColor( color, background, color );
+		}
+
+		qglColor3fv( color );
+		qglBegin( GL_LINES );
+		qglVertex3fv( a->second->origin ); qglVertex3fv( b->second->origin );
+		qglVertex3fv( tip ); qglVertex3fv( left );
+		qglVertex3fv( tip ); qglVertex3fv( right );
+		qglEnd();
+	}
+}
+
+void DrawPathLines( const float *background ){
 	int i, j, k;
 	vec3_t mid, mid1;
 	entity_t *se, *te;
@@ -275,6 +367,10 @@ void DrawPathLines( void ){
 
 	if ( g_qeglobals.d_savedinfo.exclude & EXCLUDE_PATHS ) {
 		return;
+	}
+
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+		NodPath_DrawLinks( background );
 	}
 
 	num_entities = 0;
@@ -312,11 +408,13 @@ void DrawPathLines( void ){
 				continue;
 			}
 
-			for ( i = 0 ; i < 3 ; i++ )
+			for ( i = 0 ; i < 3 ; i++ ) {
 				mid[i] = ( sb->mins[i] + sb->maxs[i] ) * 0.5;
+			}
 
-			for ( i = 0 ; i < 3 ; i++ )
+			for ( i = 0 ; i < 3 ; i++ ) {
 				mid1[i] = ( tb->mins[i] + tb->maxs[i] ) * 0.5;
+			}
 
 			VectorSubtract( mid1, mid, dir );
 			len = VectorNormalize( dir, dir );
@@ -337,8 +435,10 @@ void DrawPathLines( void ){
 			{
 				f = len * ( i + 0.5 ) / arrows;
 
-				for ( j = 0 ; j < 3 ; j++ )
+				for ( j = 0 ; j < 3 ; j++ ) {
 					mid1[j] = mid[j] + f * dir[j];
+				}
+
 				qglVertex3fv( mid1 );
 				qglVertex3f( mid1[0] + s1[0], mid1[1] + s1[1], mid1[2] );
 				qglVertex3fv( mid1 );
@@ -372,12 +472,73 @@ qboolean IsModelEntity( const char *name )
 			return qtrue;
 		}
 	}
+
 	return qfalse;
 }
 
 void CreateEntityFromName( const char* name, const vec3_t origin ){
 	entity_t *e;
 	brush_t* b;
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME && strcmp( name, "nod_static_light" ) == 0 ) {
+		std::string error;
+		e = NodLight_Create( origin, error );
+		if ( !e ) {
+			Sys_FPrintf( SYS_WRN, "NOD light: %s\n", error.c_str() );
+			gtk_MessageBox( g_pParentWnd->m_pWidget, error.c_str(), _( "Light not placed" ), MB_OK );
+		} else {
+			edit_entity = e;
+			Sys_MarkMapModified();
+			Sys_UpdateWindows( W_ALL );
+		}
+
+		return;
+	}
+
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME && NodPath_Class( name ) ) {
+		std::string error;
+		bool placed = false;
+		if ( strcmp( name, "nod_npd_waypoint" ) == 0 ) {
+			e = NodPath_Create( name, origin, "", "", error );
+			if ( e ) { edit_entity = e; placed = true; }
+		} else if ( g_qeglobals.d_select_count == 2 ) {
+			placed = NodPath_Connect( g_qeglobals.d_select_order[0]->owner, g_qeglobals.d_select_order[1]->owner, error );
+		} else {
+			error = "Select two waypoints, source first, then Connect (Ctrl+K).";
+		}
+
+		if ( !placed ) {
+			Sys_FPrintf( SYS_WRN, "NOD path: %s\n", error.c_str() );
+			gtk_MessageBox( g_pParentWnd->m_pWidget, error.c_str(), _( "Path not placed" ), MB_OK );
+		} else { edit_entity = selected_brushes.next->owner; Sys_MarkMapModified(); Sys_UpdateWindows( W_ALL ); }
+		return;
+	}
+
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+		const NodTemplateChoice *choice = NodClasses_Find( name );
+		if ( choice ) {
+			const std::string position = NodTemplate_FormatPosition( origin );
+			std::string error;
+			e = NodTemplate_Create( *choice, NodClasses_Context(), position, error, true );
+			if ( !e ) {
+				Sys_FPrintf( SYS_WRN, "NOT entity placement: %s\n", error.c_str() );
+				gtk_MessageBox( g_pParentWnd->m_pWidget, error.c_str(), _( "NOT entity not placed" ), MB_OK );
+			} else {
+				edit_entity = e;
+				Sys_MarkMapModified();
+				Sys_UpdateWindows( W_ALL );
+			}
+
+			return;
+		}
+	}
+
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME && stricmp( name, "nod_template_instance" ) == 0 ) {
+		gtk_MessageBox( g_pParentWnd->m_pWidget,
+			_( "Use Things > Templates to select a resolved template and its ordered archive context. This creates a MAP-only authoring marker, not a native NSD record." ),
+			_( "NOD template placement" ), MB_OK );
+		return;
+	}
+
 	if ( stricmp( name, "worldspawn" ) == 0 ) {
 		gtk_MessageBox( g_pParentWnd->m_pWidget, _( "Can't create an entity with worldspawn." ), "info", 0 );
 		return;
@@ -448,6 +609,7 @@ void CreateEntityFromName( const char* name, const vec3_t origin ){
 			}
 		}
 	}
+
 	Select_Brush( e->brushes.onext );
 
 	if ( IsModelEntity( name ) == qtrue ) {
@@ -521,8 +683,10 @@ void CreateSmartEntity( XYWnd* pWnd, int x, int y, const char* pName ){
 		g_bSmartWaiting = true;
 		ShowInfoDialog( "Left click to specify the rotation origin" );
 		AcquirePath( 1, &_SmartPointDone );
-		while ( g_bSmartWaiting )
+		while ( g_bSmartWaiting ) {
 			gtk_main_iteration();
+		}
+
 		HideInfoDialog();
 		CPtrArray array;
 		g_bScreenUpdates = false;
@@ -564,9 +728,11 @@ void FinishSmartCreation(){
 			Select_Brush( reinterpret_cast<brush_t*>( array.GetAt( n + 1 ) ) );
 			ConnectEntities();
 		}
+
 		g_bScreenUpdates = true;
 
 	}
+
 	g_nPathCount = 0;
 	g_bPathMode = false;
 	Sys_UpdateWindows( W_ALL );
@@ -585,9 +751,11 @@ void CleanCopyEntities(){
 			free( ep->value );
 			free( ep );
 		}
+
 		free( pe );
 		pe = next;
 	}
+
 	g_enClipboard.next = g_enClipboard.prev = &g_enClipboard;
 }
 
@@ -613,6 +781,7 @@ entity_t *Entity_CopyClone( entity_t *e ){
 		np->next = n->epairs;
 		n->epairs = np;
 	}
+
 	return n;
 }
 
@@ -625,6 +794,7 @@ bool OnList( entity_t* pFind, CPtrArray* pList ){
 			return true;
 		}
 	}
+
 	return false;
 }
 
@@ -704,6 +874,7 @@ void XYWnd::XY_Overlay(){
 		qglGetIntegerv( GL_CURRENT_RASTER_POSITION,r );
 		qglCopyPixels( r[0], r[1], 100,100, GL_COLOR );
 	}
+
 	m_bDirty = true;
 
 	//
@@ -783,6 +954,7 @@ void XYWnd::Clip(){
 			else{
 				RetainClipMode( true );
 			}
+
 			Sys_UpdateWindows( W_ALL );
 		}
 	}
@@ -791,6 +963,7 @@ void XYWnd::Clip(){
 		if ( g_pPathFunc ) {
 			g_pPathFunc( true, g_nPathCount );
 		}
+
 		g_pPathFunc = NULL;
 		g_nPathCount = 0;
 		g_bPathMode = false;
@@ -903,6 +1076,7 @@ void XYWnd::SetClipMode( bool bMode ){
 			ReleaseCapture();
 			g_pMovingClip = NULL;
 		}
+
 		CleanList( &g_brFrontSplits );
 		CleanList( &g_brBackSplits );
 		g_brFrontSplits.next = &g_brFrontSplits;
@@ -976,8 +1150,10 @@ bool XYWnd::SetRotateMode( bool bMode ){
 		if ( bMode ) {
 			Sys_Printf( "Need a brush selected to turn on Mouse Rotation mode\n" );
 		}
+
 		g_bRotateMode = false;
 	}
+
 	RedrawWindow();
 	return g_bRotateMode;
 }
@@ -1009,6 +1185,7 @@ void update_xor_rectangle_xy( XORRectangle& xor_rectangle ){
 	if ( g_qeglobals.d_select_mode == sel_area ) {
 		rectangle = rectangle_from_area_xy();
 	}
+
 	xor_rectangle.set( rectangle );
 }
 
@@ -1049,6 +1226,7 @@ void XYWnd::OnMouseMove( guint32 nFlags, int pointx, int pointy ){
 			m_ptDragTotalX = 0;
 			m_ptDragTotalY = 0;
 		}
+
 		return;
 	}
 
@@ -1109,6 +1287,7 @@ void XYWnd::OnMouseMove( guint32 nFlags, int pointx, int pointy ){
 						g_pMovingClip = &g_Clip1;
 					}
 				}
+
 				if ( g_Clip2.Set() ) {
 					if ( fDiff( g_Clip2.m_ptClip[nDim1], tdp[nDim1] ) < 3 &&
 						 fDiff( g_Clip2.m_ptClip[nDim2], tdp[nDim2] ) < 3 ) {
@@ -1116,6 +1295,7 @@ void XYWnd::OnMouseMove( guint32 nFlags, int pointx, int pointy ){
 						g_pMovingClip = &g_Clip2;
 					}
 				}
+
 				if ( g_Clip3.Set() ) {
 					if ( fDiff( g_Clip3.m_ptClip[nDim1], tdp[nDim1] ) < 3 &&
 						 fDiff( g_Clip3.m_ptClip[nDim2], tdp[nDim2] ) < 3 ) {
@@ -1124,6 +1304,7 @@ void XYWnd::OnMouseMove( guint32 nFlags, int pointx, int pointy ){
 					}
 				}
 			}
+
 			if ( bCrossHair == false ) {
 				XY_MouseMoved( pointx, m_nHeight - 1 - pointy, nFlags );
 			}
@@ -1262,9 +1443,11 @@ void XYWnd::OnRButtonDown( guint32 flags, int pointx, int pointy ){
 				g_bRogueClipMode = true;
 				DropClipPoint( flags, pointx, pointy );
 			}
+
 			return;
 		}
 	}
+
 	OriginalButtonDown( flags, pointx, pointy );
 }
 
@@ -1280,6 +1463,7 @@ void XYWnd::OnLButtonUp( guint32 flags, int pointx, int pointy ){
 			g_pMovingClip = NULL;
 		}
 	}
+
 	OriginalButtonUp( flags, pointx, pointy );
 }
 
@@ -1294,16 +1478,20 @@ void XYWnd::OnRButtonUp( guint32 flags, int pointx, int pointy ){
 		if ( Sys_AltDown() ) {
 			bGo = false;
 		}
+
 		if ( flags & MK_CONTROL ) {
 			bGo = false;
 		}
+
 		if ( flags & MK_SHIFT ) {
 			bGo = false;
 		}
+
 		if ( bGo ) {
 			HandleDrop();
 		}
 	}
+
 	OriginalButtonUp( flags, pointx, pointy );
 }
 
@@ -1399,6 +1587,7 @@ void XYWnd::XY_MouseDown( int x, int y, int buttons ){
 			if ( g_bPatchBendMode ) {
 				VectorCopy( point, g_vBendOrigin );
 			}
+
 			Sys_UpdateWindows( W_XY );
 			return;
 		}
@@ -1418,6 +1607,7 @@ void XYWnd::XY_MouseDown( int x, int y, int buttons ){
 				z.origin[0] = point[0];
 				z.origin[1] = point[2];
 			}
+
 			Sys_UpdateWindows( W_XY_OVERLAY | W_Z );
 			return;
 		}
@@ -1431,6 +1621,7 @@ void XYWnd::XY_MouseUp( int x, int y, int buttons ){
 	if ( !m_bPress_selection ) {
 		Sys_UpdateWindows( W_ALL );
 	}
+
 	m_nButtonstate = 0;
 
 	gdk_window_set_cursor( gtk_widget_get_window( m_pWidget ), NULL );
@@ -1454,12 +1645,14 @@ qboolean XYWnd::DragDelta( int x, int y, vec3_t move ){
 			delta[i] = floor( delta[i] / g_qeglobals.d_gridsize + 0.5 ) * g_qeglobals.d_gridsize;
 		}
 	}
+
 	VectorSubtract( delta, m_vPressdelta, move );
 	VectorCopy( delta, m_vPressdelta );
 
 	if ( move[0] || move[1] || move[2] ) {
 		return true;
 	}
+
 	return false;
 }
 
@@ -1499,6 +1692,7 @@ static GtkWidget * create_entity_menu_item( GtkWidget *submenu, CString strName 
 			pixbuf = gdk_pixbuf_new_from_file( filepath, NULL );
 		}
 	}
+
 	if( pixbuf ) {
 		icon = gtk_image_new_from_pixbuf( pixbuf );
 		gtk_box_pack_start( GTK_BOX( box ), icon, FALSE, FALSE, 0 );
@@ -1506,6 +1700,7 @@ static GtkWidget * create_entity_menu_item( GtkWidget *submenu, CString strName 
 
 		g_object_unref( pixbuf );
 	}
+
 	label = gtk_label_new( strName );
 	gtk_box_pack_start( GTK_BOX( box ), label, TRUE, TRUE, 0 );
 	gtk_misc_set_alignment( GTK_MISC( label ), 0.0f, 0.5f );
@@ -1515,9 +1710,20 @@ static GtkWidget * create_entity_menu_item( GtkWidget *submenu, CString strName 
 
 	return item;
 }
+
 void XYWnd::HandleDrop(){
 	if ( g_PrefsDlg.m_bRightClick == false ) {
 		return;
+	}
+
+	static unsigned nodGeneration;
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME && nodGeneration != NodClasses_Generation() ) {
+		if ( m_mnuDrop ) {
+			gtk_widget_destroy( m_mnuDrop );
+		}
+
+		m_mnuDrop = NULL;
+		nodGeneration = NodClasses_Generation();
 	}
 
 	if ( m_mnuDrop == NULL ) { // first time, load it up
@@ -1574,8 +1780,51 @@ void XYWnd::HandleDrop(){
 		CString strActive;
 		CString strLast;
 		CString strName;
+		std::map<std::string, GtkWidget *> nodMenus;
 		for ( e = eclass ; e ; e = e->next )
 		{
+			if ( g_pGameDescription->mGameFile == SCGHOST_GAME ) {
+				if ( !NodClass_Browsable( e->name, e->comments ) ) {
+					continue;
+				}
+
+				if ( NodClass_Registered( e->comments ) ) {
+					const NodTemplateChoice *choice = NodClasses_Find( e->name );
+					if ( !choice || !choice->placeable ) {
+						continue;
+					}
+
+					std::vector<std::string> parents;
+					std::set<std::string> seen;
+					std::string parent = choice->parent;
+					while ( !parent.empty() && seen.insert( parent ).second && parents.size() < 128 ) {
+						parents.push_back( parent );
+						const NodTemplateChoice *base = NodClasses_Find( parent.c_str() );
+						parent = base ? base->parent : "";
+					}
+
+					GtkWidget *target = menu;
+					for ( size_t p = parents.size(); p > 0; --p ) {
+						const std::string &name = parents[p - 1];
+						if ( !nodMenus.count( name ) ) {
+							GtkWidget *entry = gtk_menu_item_new_with_label( name.c_str() );
+							GtkWidget *children = gtk_menu_new();
+							gtk_menu_item_set_submenu( GTK_MENU_ITEM( entry ), children );
+							gtk_menu_shell_append( GTK_MENU_SHELL( target ), entry );
+							gtk_widget_show( entry );
+							nodMenus[name] = children;
+						}
+
+						target = nodMenus[name];
+					}
+
+					item = create_entity_menu_item( target, e->name );
+					g_signal_connect( G_OBJECT( item ), "activate", G_CALLBACK( HandleCommand ), GINT_TO_POINTER( nID++ ) );
+					gtk_menu_shell_append( GTK_MENU_SHELL( target ), item ); gtk_widget_show( item );
+					continue;
+				}
+			}
+
 			strLast = strName;
 			strName = e->name;
 			int n_ = strName.Find( "_" );
@@ -1606,6 +1855,7 @@ void XYWnd::HandleDrop(){
 						submenu = NULL;
 						submenu_root = NULL;
 					}
+
 					strActive = strLeft;
 
 					submenu = gtk_menu_new();
@@ -1630,6 +1880,7 @@ void XYWnd::HandleDrop(){
 					submenu = NULL;
 					submenu_root = NULL;
 				}
+
 				strActive = "";
 
 				item = create_entity_menu_item( menu, strName );
@@ -1684,6 +1935,7 @@ void XYWnd::NewBrushDrag( int x, int y ){
 		if ( mins[i] == maxs[i] ) {
 			return; // don't create a degenerate brush
 		}
+
 		if ( mins[i] > maxs[i] ) {
 			temp = mins[i];
 			mins[i] = maxs[i];
@@ -1720,6 +1972,7 @@ void XYWnd::NewBrushDrag( int x, int y ){
 			f->texdef.contents &= ~CONTENTS_DETAIL;
 		}
 	}
+
 	//
 
 	vec3_t vSize;
@@ -1750,6 +2003,7 @@ void XYWnd::XY_MouseMoved( int x, int y, int buttons ){
 		if ( g_bCrossHairs ) {
 			Sys_UpdateWindows( W_XY | W_XY_OVERLAY );
 		}
+
 		return;
 	}
 
@@ -1766,6 +2020,7 @@ void XYWnd::XY_MouseMoved( int x, int y, int buttons ){
 		if ( g_qeglobals.d_select_mode != sel_area ) {
 			Sys_UpdateWindows( W_XY_OVERLAY | W_CAMERA_IFON | W_Z );
 		}
+
 		return;
 	}
 
@@ -1786,6 +2041,7 @@ void XYWnd::XY_MouseMoved( int x, int y, int buttons ){
 			if ( g_bPatchBendMode ) {
 				VectorCopy( point, g_vBendOrigin );
 			}
+
 			Sys_UpdateWindows( W_XY );
 			return;
 		}
@@ -1806,6 +2062,7 @@ void XYWnd::XY_MouseMoved( int x, int y, int buttons ){
 				z.origin[1] = point[2];
 			}
 		}
+
 		Sys_UpdateWindows( W_XY_OVERLAY | W_Z );
 		return;
 	}
@@ -1823,6 +2080,7 @@ void XYWnd::XY_MouseMoved( int x, int y, int buttons ){
 			g_pParentWnd->GetCamWnd()->Camera()->angles[nAngle] = 180 / Q_PI*atan2( point[n1], point[n2] );
 			Sys_UpdateWindows( W_CAMERA_IFON | W_XY_OVERLAY );
 		}
+
 		return;
 	}
 
@@ -1856,6 +2114,7 @@ void XYWnd::XY_MouseMoved( int x, int y, int buttons ){
 
 			Sys_UpdateWindows( W_XY | W_XY_OVERLAY );
 		}
+
 		return;
 	}
 
@@ -1874,6 +2133,7 @@ void XYWnd::XY_MouseMoved( int x, int y, int buttons ){
 				Sys_SetCursorPos( m_ptCursorX, m_ptCursorY );
 			}
 		}
+
 		return;
 	}
 }
@@ -1926,6 +2186,7 @@ void XYWnd::DropClipPoint( guint32 nFlags, int pointx, int pointy ){
 			g_Clip1.m_ptScreenX = pointx;
 			g_Clip1.m_ptScreenY = pointy;
 		}
+
 		SnapToPoint( pointx, m_pWidget->allocation.height - 1 - pointy, *pPt );
 		// third coordinates for clip point: use d_work_max
 		// Arnout: changed to use center of selection for clipping, saves level designers moving points all over the map
@@ -1938,6 +2199,7 @@ void XYWnd::DropClipPoint( guint32 nFlags, int pointx, int pointy ){
 		Select_GetMid( mid );
 		( *pPt )[nDim] = mid[nDim];
 	}
+
 	Sys_UpdateWindows( XY | W_CAMERA_IFON );
 }
 
@@ -1964,11 +2226,13 @@ void XYWnd::DropPathPoint( guint32 nFlags, int pointx, int pointy ){
 			if ( g_pPathFunc ) {
 				g_pPathFunc( true, g_nPathCount );
 			}
+
 			g_nPathCount = 0;
 			g_bPathMode = false;
 			g_pPathFunc = NULL;
 		}
 	}
+
 	Sys_UpdateWindows( XY | W_CAMERA_IFON );
 }
 
@@ -2070,6 +2334,7 @@ void XYWnd::ProduceSplitLists(){
 				UpdatePatchInspector();
 			}
 		}
+
 		// ydnar: update the window if any patches are selected
 		Sys_UpdateWindows( XY | W_CAMERA_IFON );
 	}
@@ -2108,6 +2373,7 @@ void XYWnd::ProduceSplitLists(){
 			if ( pBack ) {
 				Brush_AddToList( pBack, &g_brBackSplits );
 			}
+
 			if ( pFront ) {
 				Brush_AddToList( pFront, &g_brFrontSplits );
 			}
@@ -2209,13 +2475,17 @@ void XYWnd::XY_DrawGrid(){
 	//Sys_Printf("scale: %f\n", m_fScale);
 	//Sys_Printf("step before: %i\n", step);
 	//Sys_Printf("scaled step: %f\n", step * m_fScale);
-	while ( ( step * m_fScale ) < 4.0f ) // make sure major grid spacing is at least 4 pixels on the screen
+	while ( ( step * m_fScale ) < 4.0f ) { // make sure major grid spacing is at least 4 pixels on the screen
 		step *= 8;
+	}
+
 	//Sys_Printf("step after: %i\n", step);
-	while ( ( stepx * m_fScale ) < 40.0f ) // text step x must be at least 40 pixels
+	while ( ( stepx * m_fScale ) < 40.0f ) { // text step x must be at least 40 pixels
 		stepx *= 2;
-	while ( ( stepy * m_fScale ) < 40.0f ) // text step y must be at least 40 pixels
+	}
+	while ( ( stepy * m_fScale ) < 40.0f ) { // text step y must be at least 40 pixels
 		stepy *= 2;
+	}
 
 	qglDisable( GL_TEXTURE_2D );
 	qglDisable( GL_TEXTURE_1D );
@@ -2232,24 +2502,28 @@ void XYWnd::XY_DrawGrid(){
 	if ( xb < region_mins[nDim1] ) {
 		xb = region_mins[nDim1];
 	}
+
 	xb = step * floor( xb / step );
 
 	xe = m_vOrigin[nDim1] + w;
 	if ( xe > region_maxs[nDim1] ) {
 		xe = region_maxs[nDim1];
 	}
+
 	xe = step * ceil( xe / step );
 
 	yb = m_vOrigin[nDim2] - h;
 	if ( yb < region_mins[nDim2] ) {
 		yb = region_mins[nDim2];
 	}
+
 	yb = step * floor( yb / step );
 
 	ye = m_vOrigin[nDim2] + h;
 	if ( ye > region_maxs[nDim2] ) {
 		ye = region_maxs[nDim2];
 	}
+
 	ye = step * ceil( ye / step );
 
 #define COLORS_DIFFER( a,b ) \
@@ -2276,17 +2550,21 @@ void XYWnd::XY_DrawGrid(){
 				if ( !( (int)x & ( step - 1 ) ) && !( (int)x - x ) ) {
 					continue;
 				}
+
 				qglVertex2f( x, yb );
 				qglVertex2f( x, ye );
 			}
+
 			for ( y = yb ; y < ye ; y += g_qeglobals.d_gridsize )
 			{
 				if ( !( (int)y & ( step - 1 ) )  && !( (int)y - y ) ) {
 					continue;
 				}
+
 				qglVertex2f( xb, y );
 				qglVertex2f( xe, y );
 			}
+
 			qglEnd();
 		}
 	}
@@ -2310,11 +2588,13 @@ void XYWnd::XY_DrawGrid(){
 			qglVertex2f( x, yb );
 			qglVertex2f( x, ye );
 		}
+
 		for ( y = yb ; y <= ye ; y += step )
 		{
 			qglVertex2f( xb, y );
 			qglVertex2f( xe, y );
 		}
+
 		qglEnd();
 	}
 
@@ -2469,24 +2749,28 @@ void XYWnd::XY_DrawBlockGrid(){
 	if ( xb < region_mins[nDim1] ) {
 		xb = region_mins[nDim1];
 	}
+
 	xb = g_qeglobals.blockSize * floor( xb / g_qeglobals.blockSize );
 
 	xe = m_vOrigin[nDim1] + w;
 	if ( xe > region_maxs[nDim1] ) {
 		xe = region_maxs[nDim1];
 	}
+
 	xe = g_qeglobals.blockSize * ceil( xe / g_qeglobals.blockSize );
 
 	yb = m_vOrigin[nDim2] - h;
 	if ( yb < region_mins[nDim2] ) {
 		yb = region_mins[nDim2];
 	}
+
 	yb = g_qeglobals.blockSize * floor( yb / g_qeglobals.blockSize );
 
 	ye = m_vOrigin[nDim2] + h;
 	if ( ye > region_maxs[nDim2] ) {
 		ye = region_maxs[nDim2];
 	}
+
 	ye = g_qeglobals.blockSize * ceil( ye / g_qeglobals.blockSize );
 
 	// draw major blocks
@@ -2516,13 +2800,14 @@ void XYWnd::XY_DrawBlockGrid(){
 	// draw coordinate text if needed
 
 	if ( m_nViewType == XY && m_fScale > .1 ) {
-		for ( x = xb ; x < xe ; x += g_qeglobals.blockSize )
+		for ( x = xb ; x < xe ; x += g_qeglobals.blockSize ) {
 			for ( y = yb ; y < ye ; y += g_qeglobals.blockSize )
 			{
 				qglRasterPos2f( x + ( g_qeglobals.blockSize / 2 ), y + ( g_qeglobals.blockSize / 2 ) );
 				sprintf( text, "%i,%i",(int)floor( x / g_qeglobals.blockSize ), (int)floor( y / g_qeglobals.blockSize ) );
 				gtk_glwidget_print_string( text );
 			}
+	}
 	}
 
 	qglColor4f( 0, 0, 0, 0 );
@@ -2823,11 +3108,13 @@ void XYWnd::XY_Draw(){
 		return; // not valid yet
 
 	}
+
 	Patch_LODMatchAll(); // spog
 
 	if ( m_bTiming ) {
 		start = Sys_DoubleTime();
 	}
+
 	//
 	// clear
 	//
@@ -2883,6 +3170,7 @@ void XYWnd::XY_Draw(){
 		if ( m_nViewType == YZ ) {
 			qglRotatef( -90,  0, 1, 0 ); // put Z going up
 		}
+
 		qglRotatef( -90,  1, 0, 0 ); // put Z going up
 	}
 
@@ -2957,7 +3245,7 @@ void XYWnd::XY_Draw(){
 		end2 = Sys_DoubleTime();
 	}
 
-	DrawPathLines();
+	DrawPathLines( g_qeglobals.d_savedinfo.colors[COLOR_GRIDBACK] );
 
 	//
 	// draw pointfile
@@ -2987,6 +3275,7 @@ void XYWnd::XY_Draw(){
 		qglEnable( GL_LINE_STIPPLE );
 		qglLineStipple( 3, 0xaaaa );
 	}
+
 	qglLineWidth( 2 );
 
 	vec3_t vMinBounds;
@@ -3006,6 +3295,7 @@ void XYWnd::XY_Draw(){
 			culled++;
 			continue; // off screen
 		}
+
 		drawn++;
 #ifdef DBG_SCENEDUMP
 		if ( bDump ) {
@@ -3019,12 +3309,14 @@ void XYWnd::XY_Draw(){
 			if ( brush->owner->eclass->fixedsize ) {
 				bFixedSize = true;
 			}
+
 			if ( g_PrefsDlg.m_bSizePaint ) {
 				for ( i = 0; i < 3; i++ )
 				{
 					if ( brush->mins[i] < vMinBounds[i] ) {
 						vMinBounds[i] = brush->mins[i];
 					}
+
 					if ( brush->maxs[i] > vMaxBounds[i] ) {
 						vMaxBounds[i] = brush->maxs[i];
 					}
@@ -3036,6 +3328,7 @@ void XYWnd::XY_Draw(){
 	if ( g_PrefsDlg.m_bNoStipple == FALSE ) {
 		qglDisable( GL_LINE_STIPPLE );
 	}
+
 	qglLineWidth( 1 );
 
 	if ( !bFixedSize && !RotateMode() && !ScaleMode() && drawn - nSaveDrawn > 0 && g_PrefsDlg.m_bSizePaint ) {
@@ -3048,8 +3341,10 @@ void XYWnd::XY_Draw(){
 		qglPointSize( 4 );
 		qglColor3f( 0,1,0 );
 		qglBegin( GL_POINTS );
-		for ( i = 0 ; i < g_qeglobals.d_numpoints ; i++ )
+		for ( i = 0 ; i < g_qeglobals.d_numpoints ; i++ ) {
 			qglVertex3fv( g_qeglobals.d_points[i] );
+		}
+
 		qglEnd();
 
 		if ( g_qeglobals.d_num_move_points ) {
@@ -3057,10 +3352,13 @@ void XYWnd::XY_Draw(){
 			qglPointSize( 5 );
 			qglColor3f( 0,0,1 );
 			qglBegin( GL_POINTS );
-			for ( i = 0; i < g_qeglobals.d_num_move_points; i++ )
+			for ( i = 0; i < g_qeglobals.d_num_move_points; i++ ) {
 				qglVertex3fv( g_qeglobals.d_move_points[i] );
+			}
+
 			qglEnd();
 		}
+
 		qglPointSize( 1 );
 	}
 	else if ( g_qeglobals.d_select_mode == sel_edge ) {
@@ -3074,6 +3372,7 @@ void XYWnd::XY_Draw(){
 			v2 = g_qeglobals.d_points[g_qeglobals.d_edges[i].p2];
 			qglVertex3f( ( v1[0] + v2[0] ) * 0.5,( v1[1] + v2[1] ) * 0.5,( v1[2] + v2[2] ) * 0.5 );
 		}
+
 		qglEnd();
 		qglPointSize( 1 );
 	}
@@ -3126,6 +3425,7 @@ void XYWnd::XY_Draw(){
 			else{
 				qglColor3fv( g_qeglobals.d_savedinfo.AxisColors[m_nViewType] );
 			}
+
 			qglBegin( GL_LINE_LOOP );
 			qglVertex2i( 0, 0 );
 			qglVertex2i( m_nWidth - 1, 0 );
@@ -3200,6 +3500,7 @@ void XYWnd::OnExpose(){
 		Sys_Printf( "Please restart Radiant if the Map view is not working\n" );
 		bPaint = false;
 	}
+
 	if ( bPaint ) {
 		QE_CheckOpenGLForErrors();
 		XY_Draw();
@@ -3210,6 +3511,7 @@ void XYWnd::OnExpose(){
 			if ( m_nViewType == YZ ) {
 				qglRotatef( -90,  0, 1, 0 ); // put Z going up
 			}
+
 			qglRotatef( -90,  1, 0, 0 ); // put Z going up
 		}
 
@@ -3235,6 +3537,7 @@ void XYWnd::OnExpose(){
 				qglVertex3f( tdp[0], tdp[1], 2 * g_MinWorldCoord );
 				qglVertex3f( tdp[0], tdp[1], 2 * g_MaxWorldCoord );
 			}
+
 			qglEnd();
 		}
 
@@ -3243,12 +3546,15 @@ void XYWnd::OnExpose(){
 			if ( g_Clip1.Set() ) {
 				g_Clip1.Draw( m_fScale, 1 ); // qglVertex3fv (g_Clip1);
 			}
+
 			if ( g_Clip2.Set() ) {
 				g_Clip2.Draw( m_fScale, 2 ); // qglVertex3fv (g_Clip2);
 			}
+
 			if ( g_Clip3.Set() ) {
 				g_Clip3.Draw( m_fScale, 3 ); // qglVertex3fv (g_Clip3);
 			}
+
 			if ( g_Clip1.Set() && g_Clip2.Set() ) {
 				ProduceSplitLists();
 				brush_t* pBrush;
@@ -3264,10 +3570,13 @@ void XYWnd::OnExpose(){
 						if ( !w ) {
 							continue;
 						}
+
 						// draw the polygon
 						qglBegin( GL_LINE_LOOP );
-						for ( int i = 0 ; i < w->numpoints ; i++ )
+						for ( int i = 0 ; i < w->numpoints ; i++ ) {
 							qglVertex3fv( w->points[i] );
+						}
+
 						qglEnd();
 					}
 				}
@@ -3276,9 +3585,11 @@ void XYWnd::OnExpose(){
 
 		if ( PathMode() ) {
 			int n;
-			for ( n = 0; n < g_nPathCount; n++ )
+			for ( n = 0; n < g_nPathCount; n++ ) {
 				g_PathPoints[n].Draw( m_fScale, n + 1 );  // qglVertex3fv(g_PathPoints[n]);
 		}
+		}
+
 		if ( m_nViewType != XY ) {
 			qglPopMatrix();
 		}
@@ -3294,6 +3605,7 @@ void XYWnd::KillPathMode(){
 	if ( g_pPathFunc ) {
 		g_pPathFunc( false, g_nPathCount );
 	}
+
 	g_nPathCount = 0;
 	g_pPathFunc = NULL;
 	Sys_UpdateWindows( W_ALL );
@@ -3343,6 +3655,7 @@ void XYWnd::OnEntityCreate( const char* item ){
 		Sys_UpdateWindows( W_ALL );
 		//OnLButtonDown((MK_LBUTTON | MK_SHIFT), CPoint(m_ptDown.x+2, m_ptDown.y+2));
 	}
+
 	Undo_EndBrushList( &selected_brushes );
 	Undo_End();
 }

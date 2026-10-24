@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: camwindow.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -29,7 +55,7 @@
 #include <gtk/gtk.h>
 #include <GL/gl.h>
 
-extern void DrawPathLines();
+extern void DrawPathLines( const float *background );
 extern void Select_ShiftTexture( int x, int y );
 extern void Select_RotateTexture( int amt );
 
@@ -134,6 +160,7 @@ void update_xor_rectangle( XORRectangle& xor_rectangle ){
 	if ( g_qeglobals.d_select_mode == sel_area ) {
 		rectangle = rectangle_from_area_cam();
 	}
+
 	xor_rectangle.set( rectangle );
 }
 
@@ -160,6 +187,7 @@ void CamWnd::OnMouseMove( guint32 flags, int pointx, int pointy ){
 	{
 		Cam_MouseMoved( pointx, height - 1 - pointy, flags );
 	}
+
 	m_ptLastCursorX = pointx;
 	m_ptLastCursorY = pointy;
 
@@ -290,9 +318,11 @@ void CamWnd::Cam_ChangeFloor( qboolean up ){
 		if ( !Brush_Ray( start, dir, b, &d ) ) {
 			continue;
 		}
+
 		if ( up && d < current && d > bestd ) {
 			bestd = d;
 		}
+
 		if ( !up && d > current && d < bestd ) {
 			bestd = d;
 		}
@@ -439,12 +469,15 @@ void CamWnd::Cam_KeyControl( float dtime ) {
 	if ( m_Camera.movementflags & MOVE_ROTLEFT ) {
 		avelocity[YAW] += dtime * g_PrefsDlg.m_nAngleSpeed;
 	}
+
 	if ( m_Camera.movementflags & MOVE_ROTRIGHT ) {
 		avelocity[YAW] -= dtime * g_PrefsDlg.m_nAngleSpeed;
 	}
+
 	if ( m_Camera.movementflags & MOVE_ROTUP ) {
 		avelocity[PITCH] += dtime * g_PrefsDlg.m_nAngleSpeed;
 	}
+
 	if ( m_Camera.movementflags & MOVE_ROTDOWN ) {
 		avelocity[PITCH] -= dtime * g_PrefsDlg.m_nAngleSpeed;
 	}
@@ -468,18 +501,23 @@ void CamWnd::Cam_KeyControl( float dtime ) {
 	if ( m_Camera.movementflags & MOVE_FORWARD ) {
 		VectorMA( velocity, dtime * g_PrefsDlg.m_nMoveSpeed, m_Camera.forward, velocity );
 	}
+
 	if ( m_Camera.movementflags & MOVE_BACK ) {
 		VectorMA( velocity, -dtime * g_PrefsDlg.m_nMoveSpeed, m_Camera.forward, velocity );
 	}
+
 	if ( m_Camera.movementflags & MOVE_STRAFELEFT ) {
 		VectorMA( velocity, -dtime * g_PrefsDlg.m_nMoveSpeed, m_Camera.right, velocity );
 	}
+
 	if ( m_Camera.movementflags & MOVE_STRAFERIGHT ) {
 		VectorMA( velocity, dtime * g_PrefsDlg.m_nMoveSpeed, m_Camera.right, velocity );
 	}
+
 	if ( m_Camera.movementflags & MOVE_UP ) {
 		VectorMA( velocity, dtime * g_PrefsDlg.m_nMoveSpeed, up, velocity );
 	}
+
 	if ( m_Camera.movementflags & MOVE_DOWN ) {
 		VectorMA( velocity, -dtime * g_PrefsDlg.m_nMoveSpeed, up, velocity );
 	}
@@ -608,8 +646,10 @@ void CamWnd::Cam_MouseDown( int x, int y, int buttons ){
 	r = (float)( x - ( m_Camera.width * .5f ) ) / ( m_Camera.width * .5f );
 	f = 1;
 
-	for ( i = 0 ; i < 3 ; i++ )
+	for ( i = 0 ; i < 3 ; i++ ) {
 		dir[i] = m_Camera.vpn[i] * f + m_Camera.vright[i] * r + m_Camera.vup[i] * u;
+	}
+
 	VectorNormalize( dir, dir );
 
 	Sys_GetCursorPos( &m_ptCursorX, &m_ptCursorY );
@@ -646,6 +686,7 @@ void CamWnd::Cam_MouseDown( int x, int y, int buttons ){
 			Patch_SetView( W_CAMERA );
 			Drag_Begin( x, y, buttons, m_Camera.vright, m_Camera.vup, m_Camera.origin, dir, true );
 		}
+
 		return;
 	}
 
@@ -656,6 +697,7 @@ void CamWnd::Cam_MouseDown( int x, int y, int buttons ){
 		else{
 			Cam_MouseControl( 0.1f );
 		}
+
 		return;
 	}
 }
@@ -694,8 +736,10 @@ void CamWnd::Cam_MouseMoved( int x, int y, int buttons ){
 				r = (float)( x - ( m_Camera.width * .5f ) ) / ( m_Camera.width * .5f );
 				f = 1;
 
-				for ( i = 0 ; i < 3 ; i++ )
+				for ( i = 0 ; i < 3 ; i++ ) {
 					dir[i] = m_Camera.vpn[i] * f + m_Camera.vright[i] * r + m_Camera.vup[i] * u;
+				}
+
 				VectorNormalize( dir,dir );
 
 				switch ( g_qeglobals.d_select_mode )
@@ -711,6 +755,7 @@ void CamWnd::Cam_MouseMoved( int x, int y, int buttons ){
 				default:
 					break;
 				}
+
 				return;
 			}
 		}
@@ -727,8 +772,10 @@ void CamWnd::Cam_MouseMoved( int x, int y, int buttons ){
 				r = (float)( x - ( m_Camera.width * .5f ) ) / ( m_Camera.width * .5f );
 				f = 1;
 
-				for ( i = 0 ; i < 3 ; i++ )
+				for ( i = 0 ; i < 3 ; i++ ) {
 					dir[i] = m_Camera.vpn[i] * f + m_Camera.vright[i] * r + m_Camera.vup[i] * u;
+				}
+
 				VectorNormalize( dir,dir );
 
 				switch ( g_qeglobals.d_select_mode )
@@ -744,6 +791,7 @@ void CamWnd::Cam_MouseMoved( int x, int y, int buttons ){
 				default:
 					break;
 				}
+
 				return;
 			}
 		}
@@ -782,6 +830,7 @@ void CamWnd::InitCull(){
 		else{
 			m_nCullv1[i] = i;
 		}
+
 		if ( m_vCull2[i] > 0 ) {
 			m_nCullv2[i] = 3 + i;
 		}
@@ -803,31 +852,35 @@ qboolean CamWnd::CullBrush( brush_t *b ){
 		point[1] = m_Camera.origin[1] - fLevel;
 		point[2] = m_Camera.origin[2] - fLevel;
 
-		for ( i = 0; i < 3; i++ )
+		for ( i = 0; i < 3; i++ ) {
 			if ( b->mins[i] < point[i] && b->maxs[i] < point[i] ) {
 				return true;
 			}
+		}
 
 		point[0] = m_Camera.origin[0] + fLevel;
 		point[1] = m_Camera.origin[1] + fLevel;
 		point[2] = m_Camera.origin[2] + fLevel;
 
-		for ( i = 0; i < 3; i++ )
+		for ( i = 0; i < 3; i++ ) {
 			if ( b->mins[i] > point[i] && b->maxs[i] > point[i] ) {
 				return true;
 			}
 	}
+	}
 
-	for ( i = 0 ; i < 3 ; i++ )
+	for ( i = 0 ; i < 3 ; i++ ) {
 		point[i] = b->mins[m_nCullv1[i]] - m_Camera.origin[i];
+	}
 
 	d = DotProduct( point, m_vCull1 );
 	if ( d < -1 ) {
 		return true;
 	}
 
-	for ( i = 0 ; i < 3 ; i++ )
+	for ( i = 0 ; i < 3 ; i++ ) {
 		point[i] = b->mins[m_nCullv2[i]] - m_Camera.origin[i];
+	}
 
 	d = DotProduct( point, m_vCull2 );
 	if ( d < -1 ) {
@@ -988,6 +1041,7 @@ void CamWnd::Cam_DrawBrush( brush_t *b, int mode ){
 					aabb_draw( b->owner->model.pRender->GetAABB(), DRAW_GL_WIRE );
 				}
 			}
+
 			break;
 		case DRAW_WIRE:
 			VectorCopy( b->owner->eclass->color, material );
@@ -1007,6 +1061,7 @@ void CamWnd::Cam_DrawBrush( brush_t *b, int mode ){
 			else if ( nModelMode & ENTITY_BOXED ) {
 				aabb_draw( b->owner->model.pRender->GetAABB(), DRAW_GL_WIRE );
 			}
+
 /*
       if(!(nModelMode & ENTITY_BOXED) && b->owner->eclass->nShowFlags & ECLASS_MISCMODEL)
               DrawModelOrigin(b);
@@ -1034,12 +1089,14 @@ void CamWnd::Cam_DrawBrush( brush_t *b, int mode ){
 				else{
 					qglColor4fv( material );
 				}
+
 				if ( nGLState & DRAW_GL_LIGHTING ) {
 					qglShadeModel( GL_SMOOTH );
 				}
 
 				DrawPatchMesh( b->pPatch );
 			}
+
 			break;
 		case DRAW_WIRE:
 			if ( g_bPatchWireFrame ) {
@@ -1048,6 +1105,7 @@ void CamWnd::Cam_DrawBrush( brush_t *b, int mode ){
 				qglColor4fv( material );
 				DrawPatchMesh( b->pPatch );
 			}
+
 			if ( b->pPatch->bSelected && ( g_qeglobals.d_select_mode == sel_curvepoint
 										   || g_qeglobals.d_select_mode == sel_area
 										   || g_bPatchBendMode ) ) {
@@ -1095,14 +1153,17 @@ void CamWnd::Cam_DrawBrushes( int mode ){
 	brush_t *b;
 	brush_t *pList = ( g_bClipMode && g_pSplitList ) ? g_pSplitList : &selected_brushes;
 
-	for ( b = active_brushes.next; b != &active_brushes; b = b->next )
+	for ( b = active_brushes.next; b != &active_brushes; b = b->next ) {
 		if ( !b->bFiltered && !b->bCamCulled ) {
 			Cam_DrawBrush( b, mode );
 		}
-	for ( b = pList->next; b != pList; b = b->next )
+	}
+
+	for ( b = pList->next; b != pList; b = b->next ) {
 		if ( !b->bFiltered && !b->bCamCulled ) {
 			Cam_DrawBrush( b, mode );
 		}
+}
 }
 
 void CamWnd::Cam_DrawStuff(){
@@ -1110,11 +1171,13 @@ void CamWnd::Cam_DrawStuff(){
 	VectorSet( identity, 0.8f, 0.8f, 0.8f );
 	brush_t *b;
 
-	for ( b = active_brushes.next; b != &active_brushes; b = b->next )
+	for ( b = active_brushes.next; b != &active_brushes; b = b->next ) {
 		b->bCamCulled = CullBrush( b );
+	}
 
-	for ( b = selected_brushes.next; b != &selected_brushes; b = b->next )
+	for ( b = selected_brushes.next; b != &selected_brushes; b = b->next ) {
 		b->bCamCulled = CullBrush( b );
+	}
 
 	switch ( m_Camera.draw_mode )
 	{
@@ -1132,6 +1195,7 @@ void CamWnd::Cam_DrawStuff(){
 			qglDisable( GL_COLOR_MATERIAL );
 			qglDisableClientState( GL_NORMAL_ARRAY );
 		}
+
 		m_Camera.draw_glstate = DRAW_GL_WIRE;
 		break;
 
@@ -1153,6 +1217,7 @@ void CamWnd::Cam_DrawStuff(){
 //    qglEnable(GL_RESCALE_NORMAL);
 			qglEnableClientState( GL_NORMAL_ARRAY );
 		}
+
 		m_Camera.draw_glstate = DRAW_GL_SOLID;
 		break;
 
@@ -1177,6 +1242,7 @@ void CamWnd::Cam_DrawStuff(){
 			qglEnableClientState( GL_NORMAL_ARRAY );
 //    qglEnable(GL_RESCALE_NORMAL);
 		}
+
 		qglPolygonOffset( -1.0, 2 );
 		m_Camera.draw_glstate = DRAW_GL_TEXTURED;
 		break;
@@ -1195,6 +1261,7 @@ void CamWnd::Cam_DrawStuff(){
 		if ( g_PrefsDlg.m_bGLLighting ) {
 			qglEnable( GL_COLOR_MATERIAL );
 		}
+
 		qglDisableClientState( GL_TEXTURE_COORD_ARRAY );
 		break;
 	case cd_solid:
@@ -1218,6 +1285,7 @@ void CamWnd::Cam_DrawStuff(){
 			qglDisableClientState( GL_NORMAL_ARRAY );
 //      qglDisable(GL_RESCALE_NORMAL);
 		}
+
 		qglPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 		break;
 	case cd_solid:
@@ -1227,6 +1295,7 @@ void CamWnd::Cam_DrawStuff(){
 			qglDisableClientState( GL_NORMAL_ARRAY );
 //      qglDisable(GL_RESCALE_NORMAL);
 		}
+
 		qglPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 		break;
 	case cd_wire:
@@ -1248,6 +1317,7 @@ void CamWnd::Cam_DrawStuff(){
 			qglEnableClientState( GL_NORMAL_ARRAY );
 			qglMaterialfv( GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, identity );
 		}
+
 		qglEnable( GL_TEXTURE_2D );
 		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
 		m_Camera.draw_glstate = DRAW_GL_TEXTURED;
@@ -1261,6 +1331,7 @@ void CamWnd::Cam_DrawStuff(){
 			qglEnableClientState( GL_NORMAL_ARRAY );
 //      qglEnable(GL_RESCALE_NORMAL);
 		}
+
 		m_Camera.draw_glstate = DRAW_GL_SOLID;
 		break;
 	case cd_wire:
@@ -1295,6 +1366,7 @@ void CamWnd::Cam_DrawStuff(){
 			qglDisable( GL_LIGHTING );
 //      qglDisable(GL_RESCALE_NORMAL);
 		}
+
 		break;
 	case cd_solid:
 		if ( g_PrefsDlg.m_bGLLighting ) {
@@ -1302,6 +1374,7 @@ void CamWnd::Cam_DrawStuff(){
 			qglDisable( GL_LIGHTING );
 //      qglDisable(GL_RESCALE_NORMAL);
 		}
+
 		break;
 	case cd_wire:
 		break;
@@ -1331,6 +1404,7 @@ void CamWnd::Cam_Draw(){
 		return; // not valid yet
 
 	}
+
 	if ( m_Camera.timing ) {
 		start = Sys_DoubleTime();
 	}
@@ -1356,7 +1430,7 @@ void CamWnd::Cam_Draw(){
 
 	screenaspect = (float)m_Camera.width / m_Camera.height;
 	yfov = 2 * atan( (float)m_Camera.height / m_Camera.width ) * 180 / Q_PI;
-	qgluPerspective( yfov,  screenaspect,  8,  32768 );
+	qgluPerspective( yfov,  screenaspect,  0.01,  1000.0 );
 
 	// we're too lazy to calc projection matrix ourselves!!!
 	qglGetFloatv( GL_PROJECTION_MATRIX, &m_Camera.projection[0][0] );
@@ -1467,11 +1541,11 @@ void CamWnd::Cam_Draw(){
 			}
 			else
 			{
-				for ( face = brush->brush_faces ; face ; face = face->next )
+				for ( face = brush->brush_faces ; face ; face = face->next ) {
 					Brush_FaceDraw( face, DRAW_GL_FLAT );
 			}
 		}
-
+		}
 
 		int nCount = g_ptrSelectedFaces.GetSize();
 		if ( nCount > 0 ) {
@@ -1509,10 +1583,11 @@ void CamWnd::Cam_Draw(){
 			}
 			else
 			{
-				for ( face = brush->brush_faces ; face ; face = face->next )
+				for ( face = brush->brush_faces ; face ; face = face->next ) {
 					Brush_FaceDraw( face, DRAW_GL_WIRE );
 			}
 		}
+	}
 	}
 
 	// edge / vertex flags
@@ -1521,18 +1596,22 @@ void CamWnd::Cam_Draw(){
 			qglPointSize( 4 );
 			qglColor3f( 0,1,0 );
 			qglBegin( GL_POINTS );
-			for ( i = 0 ; i < g_qeglobals.d_numpoints ; i++ )
-				qglVertex3fv( g_qeglobals.d_points[i] );
-			qglEnd();
+			for ( i = 0 ; i < g_qeglobals.d_numpoints ; i++ ) {
+			qglVertex3fv( g_qeglobals.d_points[i] );
+		}
+
+		qglEnd();
 
 			if ( g_qeglobals.d_num_move_points ) {
 				// selected brush verts
 				qglPointSize( 5 );
 				qglColor3f( 0,0,1 );
 				qglBegin( GL_POINTS );
-				for ( i = 0; i < g_qeglobals.d_num_move_points; i++ )
-					qglVertex3fv( g_qeglobals.d_move_points[i] );
-				qglEnd();
+				for ( i = 0; i < g_qeglobals.d_num_move_points; i++ ) {
+				qglVertex3fv( g_qeglobals.d_move_points[i] );
+			}
+
+			qglEnd();
 			}
 
 			qglPointSize( 1 );
@@ -1548,6 +1627,7 @@ void CamWnd::Cam_Draw(){
 			v2 = g_qeglobals.d_points[g_qeglobals.d_edges[i].p2];
 			qglVertex3f( ( v1[0] + v2[0] ) * 0.5,( v1[1] + v2[1] ) * 0.5,( v1[2] + v2[2] ) * 0.5 );
 		}
+
 		qglEnd();
 		qglPointSize( 1 );
 	}
@@ -1556,7 +1636,7 @@ void CamWnd::Cam_Draw(){
 	// draw pointfile
 	//
 	qglEnable( GL_DEPTH_TEST );
-	DrawPathLines();
+	DrawPathLines( NULL );
 
 	if ( g_qeglobals.d_pointfile_display_list ) {
 		Pointfile_Draw();
@@ -1640,11 +1720,13 @@ void CamWnd::Cam_Draw(){
 		Sys_Printf( "Camera: %i ms\n", (int)( 1000 * ( end - start ) ) );
 	}
 
-	for ( brush = active_brushes.next ; brush != &active_brushes ; brush = brush->next )
+	for ( brush = active_brushes.next ; brush != &active_brushes ; brush = brush->next ) {
 		brush->bCamCulled = false;
+	}
 
-	for ( brush = pList->next ; brush != pList ; brush = brush->next )
+	for ( brush = pList->next ; brush != pList ; brush = brush->next ) {
 		brush->bCamCulled = false;
+}
 }
 
 void CamWnd::OnExpose(){
@@ -1685,6 +1767,7 @@ void CamWnd::BenchMark(){
 		m_Camera.angles[YAW] = i * 4;
 		Cam_Draw();
 	}
+
 	SwapBuffers();
 	qglDrawBuffer( GL_BACK );
 	double dEnd = Sys_DoubleTime();

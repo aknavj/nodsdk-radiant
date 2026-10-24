@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: preferences.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -258,6 +284,7 @@ void CXMLPropertyBag::PushAssignment( const char *name, PrefTypes_t type, void *
 			}
 		}
 	}
+
 	// ok, it's not in our list yet
 	mPrefAssignments.push_front( CPrefAssignment( name, type, pV ) );
 }
@@ -279,8 +306,10 @@ xmlNodePtr CXMLPropertyBag::EpairForName( const char *name ){
 				}
 			}
 		}
+
 		pNode = pNode->next;
 	}
+
 	return ret;
 }
 
@@ -300,6 +329,7 @@ void CXMLPropertyBag::GetPref( const char *name, Str *pV, const char *V ){
 		pNode = xmlNewChild( mpDocNode, NULL, (xmlChar *)"epair", (xmlChar *)V );
 		xmlSetProp( pNode, (xmlChar *)"name", (xmlChar *)name );
 	}
+
 	// push the pref assignment if needed
 	PushAssignment( name, PREF_STR, pV );
 }
@@ -317,6 +347,7 @@ void CXMLPropertyBag::GetPref( const char *name, int *pV, int V ){
 		xmlSetProp( pNode, (xmlChar *)"name", (xmlChar *)name );
 		*pV = V;
 	}
+
 	// push the pref assignment if needed
 	PushAssignment( name, PREF_INT, pV );
 }
@@ -340,6 +371,7 @@ void CXMLPropertyBag::GetPref( const char *name, bool *pV, bool V ){
 		xmlSetProp( pNode, (xmlChar *)"name", (xmlChar *)name );
 		*pV = V;
 	}
+
 	// push the pref assignment
 	PushAssignment( name, PREF_BOOL, pV );
 }
@@ -357,6 +389,7 @@ void CXMLPropertyBag::GetPref( const char *name, float *pV, float V ){
 		xmlSetProp( pNode, (xmlChar *)"name", (xmlChar *)name );
 		*pV = V;
 	}
+
 	// push the pref assignment if needed
 	PushAssignment( name, PREF_FLOAT, pV );
 }
@@ -376,6 +409,7 @@ void CXMLPropertyBag::GetPref( const char *name, float* pV, float* V ){
 		pV[1] = V[1];
 		pV[2] = V[2];
 	}
+
 	// push the pref assignment if needed
 	PushAssignment( name, PREF_VEC3, pV );
 }
@@ -393,6 +427,7 @@ void CXMLPropertyBag::GetPref( const char *name, window_position_t* pV, window_p
 		xmlSetProp( pNode, (xmlChar *)"name", (xmlChar *)name );
 		*pV = V;
 	}
+
 	// push the pref assignment if needed
 	PushAssignment( name, PREF_WNDPOS, pV );
 }
@@ -414,6 +449,7 @@ void CXMLPropertyBag::UpdatePrefTree(){
 			Sys_FPrintf( SYS_ERR, "Unexpected EpairForName '%s' not found in UpdatePrefTree\n", pPref->mName.GetBuffer() );
 			return;
 		}
+
 		switch ( ( *iPref ).mType )
 		{
 		case PREF_STR:
@@ -437,6 +473,7 @@ void CXMLPropertyBag::UpdatePrefTree(){
 			sprintf( s, "%f %f %f", v[0], v[1], v[2] );
 			xmlNodeSetContent( pNode, (xmlChar *)s );
 		}
+
 		break;
 		case PREF_WNDPOS:
 		{
@@ -444,6 +481,7 @@ void CXMLPropertyBag::UpdatePrefTree(){
 			WindowPosition_Write( *(window_position_t*)pPref->mVal, str );
 			xmlNodeSetContent( pNode, (xmlChar*)str.GetBuffer() );
 		}
+
 		break;
 		}
 	}
@@ -477,6 +515,7 @@ void CXMLPropertyBag::ReadXMLFile( const char* pFilename ){
 			xmlFreeDoc( mpDoc );
 			mpDoc = NULL;
 		}
+
 		Sys_Printf( "Opened XML property file: '%s'\n", pFilename );
 	}
 
@@ -527,6 +566,7 @@ static void OnBtnBrowseprefab( GtkWidget *widget, gpointer data ){
 	if ( strlen( path ) == 0 ) {
 		path = g_strGameToolsPath;
 	}
+
 	char *dir = dir_dialog( g_PrefsDlg.GetWidget(), _( "Set prefab path" ), path );
 	dlg->UpdateData( TRUE );
 
@@ -547,6 +587,7 @@ static void OnBtnBrowseuserini( GtkWidget *widget, gpointer data ){
 	if ( strlen( path ) == 0 ) {
 		path = g_strGameToolsPath;
 	}
+
 	// TODO: INI filter?
 	const char *filename = file_dialog( g_PrefsDlg.GetWidget(), TRUE, _( "Find INI file" ), path );
 
@@ -720,16 +761,21 @@ CGameDescription::CGameDescription( xmlDocPtr pDoc, const Str &GameFile ){
 	// read the user-friendly game name
 	xmlNodePtr pNode = mpDoc->children;
 
-	while ( strcmp( (const char*)pNode->name, "game" ) && pNode != NULL ) pNode = pNode->next;
+	while ( strcmp( (const char*)pNode->name, "game" ) && pNode != NULL ) {
+		pNode = pNode->next;
+	}
+
 	if ( !pNode ) {
 		///< \todo add the file name (this node and gametools should all be part of CGameDescription anyway)
 		Error( "Didn't find 'game' node in the game description file '%s'\n", pDoc->URL );
 	}
+
 	// on win32, game tools path can now be specified relative to the exe's cwd
 	prop = (char*)xmlGetProp( pNode, (xmlChar*)TOOLS_ATTRIBUTE );
 	if ( prop == NULL ) {
 		Error( "Didn't find '" TOOLS_ATTRIBUTE "' node in the game description file '%s'\n", pDoc->URL );
 	}
+
 	{
 		char full[PATH_MAX];
 #ifdef _WIN32
@@ -743,6 +789,7 @@ CGameDescription::CGameDescription( xmlDocPtr pDoc, const Str &GameFile ){
 			if ( *p == '\\' ) {
 				*p = '/';
 			}
+
 			mGameToolsPath = full;
 			if ( p != full && *( p - 1 ) != '/' ) {
 				mGameToolsPath += "/";
@@ -838,6 +885,7 @@ CGameDescription::CGameDescription( xmlDocPtr pDoc, const Str &GameFile ){
 					*p = '/';
 				}
 			}
+
 			mEnginePath = full;
 			if ( p != full && *( p - 1 ) != '/' ) {
 				mEnginePath += "/";
@@ -852,6 +900,7 @@ CGameDescription::CGameDescription( xmlDocPtr pDoc, const Str &GameFile ){
 			if ( ( aux_path[ strlen( aux_path ) - 1 ] == '/' ) || ( aux_path[ strlen( aux_path ) - 1 ] == '\\' ) ) {
 				aux_path[strlen( aux_path ) - 1] = '\0'; // strip ending '/' if any
 			}
+
 			char up_path[PATH_MAX]; // up one level
 			ExtractFilePath( aux_path, up_path );
 			mEnginePath = up_path;
@@ -878,6 +927,24 @@ CGameDescription::CGameDescription( xmlDocPtr pDoc, const Str &GameFile ){
 	}
 
 	mShaderPath = xmlGetProp( pNode, (const xmlChar *)"shaderpath" );
+	prop = (char*)xmlGetProp( pNode, (const xmlChar *)"nod_assetpath" );
+	if ( prop ) {
+		mNodAssetPath = prop;
+		xmlFree( prop );
+	}
+
+	prop = (char*)xmlGetProp( pNode, (const xmlChar *)"nod_mappath" );
+	if ( prop ) {
+		mNodMapPath = prop;
+		xmlFree( prop );
+	}
+
+	prop = (char*)xmlGetProp( pNode, (const xmlChar *)"nod_editorspath" );
+	if ( prop ) {
+		mNodEditorsPath = prop;
+		xmlFree( prop );
+	}
+
 	if ( !mShaderPath.GetLength() ) {
 		mShaderPath = "scripts/";
 		mShaderlist = "scripts/shaderlist.txt";
@@ -886,6 +953,7 @@ CGameDescription::CGameDescription( xmlDocPtr pDoc, const Str &GameFile ){
 		mShaderlist = mShaderPath;
 		mShaderlist += "shaderlist.txt";
 	}
+
 	xmlChar* default_scale = xmlGetProp( pNode, (const xmlChar *)"default_scale" );
 	if ( default_scale ) {
 		mTextureDefaultScale = atof( (const char *)default_scale );
@@ -895,6 +963,7 @@ CGameDescription::CGameDescription( xmlDocPtr pDoc, const Str &GameFile ){
 	else{
 		mTextureDefaultScale = 0.5f;
 	}
+
 	xmlChar* eclass_singleload = xmlGetProp( pNode, (const xmlChar*)"eclass_singleload" );
 	if ( eclass_singleload ) {
 		mEClassSingleLoad = true;
@@ -903,6 +972,7 @@ CGameDescription::CGameDescription( xmlDocPtr pDoc, const Str &GameFile ){
 	} else {
 		mEClassSingleLoad = false;
 	}
+
 	xmlChar* no_patch = xmlGetProp( pNode, (const xmlChar *)"no_patch" );
 	if ( no_patch ) {
 		mNoPatch = true;
@@ -911,6 +981,7 @@ CGameDescription::CGameDescription( xmlDocPtr pDoc, const Str &GameFile ){
 	} else {
 		mNoPatch = false;
 	}
+
 	xmlChar* caulk_shader = xmlGetProp( pNode, (const xmlChar *)"caulk_shader" );
 	if ( caulk_shader ) {
 		mCaulkShader = caulk_shader;
@@ -935,6 +1006,10 @@ void CGameDescription::Dump(){
 	Sys_Printf( "executables path     : '%s'\n", mExecutablesPath.GetBuffer() );
 	Sys_Printf( "engine               : '%s'\n", mEngine.GetBuffer() );
 	Sys_Printf( "shaderlist           : '%s'\n", mShaderlist.GetBuffer() );
+	if ( mGameFile == SCGHOST_GAME ) {
+		Sys_Printf( "NOD asset path       : '%s'\n", mNodAssetPath.GetBuffer() );
+	}
+
 	Sys_Printf( "caulk shader         : '%s'\n", mCaulkShader.GetBuffer() );
 	Sys_Printf( "prefix               : '%s'\n", mUserPathPrefix.GetBuffer() );
 	Sys_Printf( "default texture scale: %g\n", mTextureDefaultScale );
@@ -948,6 +1023,7 @@ CPrefAssignment& CPrefAssignment::operator =( const CPrefAssignment& ass ){
 		mType = ass.mType;
 		mVal = ass.mVal;
 	}
+
 	return *this;
 }
 
@@ -1105,12 +1181,14 @@ void CGameDialog::UpdateData( bool retrieve ) {
 				m_nComboSelect = i;
 				break;
 			}
+
 			i++;
 		}
 #ifdef _WIN32
 		UpdateNetrun( retrieve );
 #endif
 	}
+
 	Dialog::UpdateData( retrieve );
 	if ( retrieve ) {
 		// use m_nComboSelect to set m_sGameFile
@@ -1120,6 +1198,7 @@ void CGameDialog::UpdateData( bool retrieve ) {
 		{
 			iGame++;
 		}
+
 		m_sGameFile = ( *iGame )->mGameFile;
 #ifdef _WIN32
 		UpdateNetrun( retrieve );
@@ -1186,6 +1265,7 @@ void CGameDialog::UpdateGameCombo() {
 	for ( iGame = mGames.begin(); iGame != mGames.end(); iGame++ ) {
 		gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( mGameCombo ), ( *iGame )->mGameName.GetBuffer() );
 	}
+
 	gtk_combo_box_set_active( GTK_COMBO_BOX( mGameCombo ), 0 );
 }
 
@@ -1201,6 +1281,7 @@ void CGameDialog::ScanForGames(){
 		for ( iGame = mGames.begin(); iGame != mGames.end(); iGame++ ) {
 			delete ( *iGame );
 		}
+
 		mGames.clear();
 	}
 
@@ -1235,6 +1316,7 @@ void CGameDialog::ScanForGames(){
 			if ( ( ext == NULL ) || ( strcmp( ext, ".game" ) != 0 ) ) {
 				continue;
 			}
+
 			strPath.Format( "%s/%s", path, dirlist );
 			Sys_Printf( "%s\n", strPath.GetBuffer() );
 			// got one, load it
@@ -1249,6 +1331,7 @@ void CGameDialog::ScanForGames(){
 
 			g_free( dirlist );
 		}
+
 		g_dir_close( dir );
 	}
 
@@ -1264,6 +1347,7 @@ CGameDescription* CGameDialog::GameDescriptionForComboItem(){
 			return ( *iGame );
 		}
 	}
+
 	return NULL; // not found
 }
 
@@ -1277,6 +1361,7 @@ void CGameDialog::Reset(){
 	if ( !g_PrefsDlg.m_global_rc_path ) {
 		InitGlobalPrefPath();
 	}
+
 	CString strGlobalPref = g_PrefsDlg.m_global_rc_path->str;
 	strGlobalPref += "global.pref";
 	remove( strGlobalPref.GetBuffer() );
@@ -1292,6 +1377,7 @@ void CGameDialog::Init(){
 			Error( "No games setup, aborting\n" );
 		}
 	}
+
 	LoadPrefs();
 	if ( m_bAutoLoadGame ) {
 		// search by .game name
@@ -1304,6 +1390,7 @@ void CGameDialog::Init(){
 			}
 		}
 	}
+
 	if ( !m_bAutoLoadGame || !m_pCurrentGameDescription ) {
 		DoGameDialog();
 		// use m_nComboSelect to identify the game to run as and set the globals
@@ -1312,6 +1399,7 @@ void CGameDialog::Init(){
 			Error( "Lookup of game description object failed, can't continue\n" );
 		}
 	}
+
 	g_pGameDescription = m_pCurrentGameDescription;
 
 	g_strGameToolsPath = g_pGameDescription->mGameToolsPath;
@@ -1342,6 +1430,7 @@ CGameDialog::~CGameDialog(){
 		// NOTE I'm not too sure how reliable this is
 		g_object_unref( GTK_WIDGET( mFrame ) );
 	}
+
 	// free all the game descriptions
 	std::list<CGameDescription *>::iterator iGame;
 	for ( iGame = mGames.begin(); iGame != mGames.end(); iGame++ )
@@ -1363,6 +1452,7 @@ void CGameDialog::AddPacksURL( Str &URL ){
 		else if ( ( *iGame )->mGameFile == "wolf.game" ) {
 			URL += "&Games_dlup%5B%5D=2";
 		}
+
 		// FIXME: double entry
 		else if ( ( *iGame )->mGameFile == "wolf.game" ) {
 			URL += "&Games_dlup%5B%5D=3";
@@ -1426,6 +1516,7 @@ void CGameDialog::UpdateNetrun( bool retrieve ){
 				Sys_Printf( "Netrun mode is disabled\n" );
         return;
 			}
+
 			// prefer keeping it on rather than going out of sync
 			Sys_FPrintf( SYS_ERR, "Problem deleting netrun file '%s', leaving netrun mode on\n", strNetrun.GetBuffer() );
 			m_bNetRun = true;
@@ -1493,6 +1584,7 @@ void PrefsDlg::UpdateData( bool retrieve ){
 	if ( m_pWidget == NULL ) {
 		return;
 	}
+
 	mGamesDialog.UpdateData( retrieve );
 	Dialog::UpdateData( retrieve );
 }
@@ -1543,6 +1635,7 @@ static void OnX64Toggle( GtkWidget *widget, gpointer data ) {
     // calls to gtk_toggle_button_get_active trigger the "toggle" signal to fire .. so ignore unless we're in the modal dialog
     return;
   }
+
   gtk_MessageBox( widget, _( "You must restart Radiant for the change to take effect." ) );
   g_PrefsDlg.m_nLastProjectVer = -1;
   g_PrefsDlg.m_strLastProject = "";
@@ -1659,11 +1752,13 @@ void PrefsDlg::BuildDialog(){
 					gtk_tree_store_append( store, &tab, &group );
 					gtk_tree_store_set( store, &tab, 0, _( "2D Display/Rendering" ), 1, (gpointer)PTAB_2D, -1 );
 				}
+
 				{
 					GtkTreeIter tab;
 					gtk_tree_store_append( store, &tab, &group );
 					gtk_tree_store_set( store, &tab, 0, _( "3D View" ), 1, (gpointer)PTAB_CAMERA, -1 );
 				}
+
 				{
 					GtkTreeIter tab;
 					gtk_tree_store_append( store, &tab, &group );
@@ -1680,11 +1775,13 @@ void PrefsDlg::BuildDialog(){
 					gtk_tree_store_append( store, &tab, &group );
 					gtk_tree_store_set( store, &tab, 0, _( "Layout" ), 1, (gpointer)PTAB_LAYOUT, -1 );
 				}
+
 				{
 					GtkTreeIter tab;
 					gtk_tree_store_append( store, &tab, &group );
 					gtk_tree_store_set( store, &tab, 0, _( "Mouse" ), 1, (gpointer)PTAB_MOUSE, -1 );
 				}
+
 				{
 					GtkTreeIter tab;
 					gtk_tree_store_append( store, &tab, &group );
@@ -1701,21 +1798,25 @@ void PrefsDlg::BuildDialog(){
 					gtk_tree_store_append( store, &tab, &group );
 					gtk_tree_store_set( store, &tab, 0, _( "Startup/Auto save" ), 1, (gpointer)PTAB_STARTUP, -1 );
 				}
+
 				{
 					GtkTreeIter tab;
 					gtk_tree_store_append( store, &tab, &group );
 					gtk_tree_store_set( store, &tab, 0, _( "Paths" ), 1, (gpointer)PTAB_PATHS, -1 );
 				}
+
 				{
 					GtkTreeIter tab;
 					gtk_tree_store_append( store, &tab, &group );
 					gtk_tree_store_set( store, &tab, 0, _( "Brush" ), 1, (gpointer)PTAB_BRUSH, -1 );
 				}
+
 				{
 					GtkTreeIter tab;
 					gtk_tree_store_append( store, &tab, &group );
 					gtk_tree_store_set( store, &tab, 0, _( "Misc" ), 1, (gpointer)PTAB_MISC, -1 );
 				}
+
 				if ( !g_qeglobals.bBSPFrontendPlugin ) {
 					GtkTreeIter tab;
 					gtk_tree_store_append( store, &tab, &group );
@@ -1911,6 +2012,7 @@ void PrefsDlg::BuildDialog(){
 	{
 		gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( combo ), (const char *)lst->data );
 	}
+
 	g_list_free( combo_list );
 
 	// Freelook in Camera view
@@ -2050,10 +2152,12 @@ void PrefsDlg::BuildDialog(){
 		combo_list = g_list_append( combo_list, (void *)_( "S3TC DXT3" ) );
 		combo_list = g_list_append( combo_list, (void *)_( "S3TC DXT5" ) );
 	}
+
 	for( lst = combo_list; lst != NULL; lst = g_list_next( lst ) )
 	{
 		gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( combo ), (const char *)lst->data );
 	}
+
 	g_list_free( combo_list );
 
 	// container
@@ -2091,11 +2195,13 @@ void PrefsDlg::BuildDialog(){
 	else{
 		combo_list = g_list_append( combo_list, (void *)_( "Common" ) );
 	}
+
 	combo_list = g_list_append( combo_list, (void *)_( "All" ) );
 	for( lst = combo_list; lst != NULL; lst = g_list_next( lst ) )
 	{
 		gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( combo ), (const char *)lst->data );
 	}
+
 	g_list_free( combo_list );
 
 	check = gtk_check_button_new_with_label( _( "Use Fixed Texture Size" ) );
@@ -2709,6 +2815,7 @@ void PrefsDlg::BuildDialog(){
 	{
 		gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( combo ), (const char *)lst->data );
 	}
+
 	g_list_free( combo_list );
 
 #ifdef _WIN32
@@ -2869,10 +2976,12 @@ void PrefsDlg::UpdateTextureCompression(){
 			Sys_Printf( "Inconsistant pref setting for texture compression (%d), rolling back\n", m_nTextureCompressionFormat );
 			m_nTextureCompressionFormat = 1; // if this is not supported either, see below
 		}
+
 		if ( m_nTextureCompressionFormat == 1 && !g_qeglobals.m_bOpenGLCompressionSupported ) {
 			Sys_Printf( "Inconsistant pref setting for texture compression (GL_COMPRESSED_RGBA), rolling back\n" );
 			m_nTextureCompressionFormat = 0;
 		}
+
 		switch ( m_nTextureCompressionFormat )
 		{
 		case ( 0 ):
@@ -2881,24 +2990,28 @@ void PrefsDlg::UpdateTextureCompression(){
 			Sys_Printf( "texture compression disabled by preferences settings\n" );
 			break;
 		}
+
 		case ( 1 ):
 		{
 			g_qeglobals.texture_components = GL_COMPRESSED_RGBA;
 			Sys_Printf( "OpenGL texture compression enabled\n" );
 			break;
 		}
+
 		case ( 2 ):
 		{
 			g_qeglobals.texture_components = GL_COMPRESSED_RGBA_S3TC_DXT1_EXT;
 			Sys_Printf( "S3TC DXT1 texture compression enabled\n" );
 			break;
 		}
+
 		case ( 3 ):
 		{
 			g_qeglobals.texture_components = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
 			Sys_Printf( "S3TC DXT3 texture compression enabled\n" );
 			break;
 		}
+
 		case ( 4 ):
 		{
 			g_qeglobals.texture_components = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
@@ -3069,6 +3182,7 @@ void PrefsDlg::LoadPrefs(){
 		// ericw-tools do not support BSP monitoring
 		bWatchBSPDefault = FALSE;
 	}
+
 	mLocalPrefs.GetPref( WATCHBSP_KEY,           &m_bWatchBSP,                   bWatchBSPDefault );
 	mLocalPrefs.GetPref( TEXTURE_KEY,            &m_bTextureWindow,              bTextureWindowDefault );
 
@@ -3278,6 +3392,7 @@ void PrefsDlg::PostModal( int code ){
 		if ( g_pParentWnd ) {
 			g_pParentWnd->SetGridStatus();
 		}
+
 		Sys_UpdateWindows( W_ALL );
 		if ( m_nUndoLevels != 0 ) {
 			Undo_SetMaxSize( m_nUndoLevels );
@@ -3395,6 +3510,16 @@ void CGameInstall::OnGameSelectChanged( GtkWidget *widget, gpointer data ) {
 	GtkWidget *button = GTK_WIDGET( g_object_get_data( G_OBJECT( i->m_pWidget ), "executable_button" ) );
 
 	int game_id = i->m_availGames[ i->m_nComboSelect ];
+	GtkWidget *nodLabel = GTK_WIDGET( g_object_get_data( G_OBJECT( i->m_pWidget ), "nod_assets_label" ) );
+	GtkWidget *nodEntry = GTK_WIDGET( g_object_get_data( G_OBJECT( i->m_pWidget ), "nod_assets_entry" ) );
+	if ( game_id == GAME_SCGHOST ) {
+		gtk_widget_show( nodLabel );
+		gtk_widget_show( nodEntry );
+	} else {
+		gtk_widget_hide( nodLabel );
+		gtk_widget_hide( nodEntry );
+	}
+
 	if ( game_id == GAME_Q2 || game_id == GAME_QUETOO || game_id == GAME_Q2_REMASTER ) {
 		gtk_widget_show( label );
 		gtk_widget_show( entry );
@@ -3403,6 +3528,17 @@ void CGameInstall::OnGameSelectChanged( GtkWidget *widget, gpointer data ) {
 		gtk_widget_hide( label );
 		gtk_widget_hide( entry );
 		gtk_widget_hide( button );
+	}
+}
+
+void CGameInstall::OnBtnBrowseNodAssets( GtkWidget *widget, gpointer data ) {
+	CGameInstall* i = static_cast<CGameInstall*>( data );
+	char *dir = dir_dialog( i->m_pWidget, _( "Select NOD asset directory (contains Materials)" ), NULL );
+	i->UpdateData( TRUE );
+	if ( dir != NULL ) {
+		i->m_strNodAssets = dir;
+		i->UpdateData( FALSE );
+		g_free( dir );
 	}
 }
 
@@ -3488,9 +3624,14 @@ void CGameInstall::BuildDialog() {
 		case GAME_UNVANQUISHED:
 			gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( game_select_combo ), _( "Unvanquished" ) );
 			break;
+		case GAME_SCGHOST:
+			gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( game_select_combo ), _( "StarCraft Ghost (NOD authoring)" ) );
+			break;
 		}
+
 		iGame++;
 	}
+
 	AddDialogData( game_select_combo, &m_nComboSelect, DLG_COMBO_BOX_INT );
 	g_signal_connect( G_OBJECT( game_select_combo ), "changed", G_CALLBACK( OnGameSelectChanged ), this );
 
@@ -3557,6 +3698,29 @@ void CGameInstall::BuildDialog() {
 	gtk_widget_show( button );
 	g_object_set_data( G_OBJECT( dlg ), "executable_button", button );
 
+	text = gtk_label_new( _( "NOD assets (optional, read-only)" ) );
+	gtk_misc_set_alignment( GTK_MISC( text ), 1.0, 0.5 );
+	gtk_table_attach( GTK_TABLE( table ), text, 0, 1, 4, 5,
+					  (GtkAttachOptions) ( GTK_FILL ), (GtkAttachOptions) ( 0 ), 0, 0 );
+	gtk_widget_show( text );
+	g_object_set_data( G_OBJECT( dlg ), "nod_assets_label", text );
+
+	hbox = gtk_hbox_new( FALSE, 5 );
+	gtk_table_attach( GTK_TABLE( table ), hbox, 1, 2, 4, 5,
+					  (GtkAttachOptions) ( GTK_EXPAND | GTK_FILL ), (GtkAttachOptions) ( 0 ), 0, 0 );
+	gtk_widget_show( hbox );
+	g_object_set_data( G_OBJECT( dlg ), "nod_assets_entry", hbox );
+
+	entry = gtk_entry_new();
+	gtk_box_pack_start( GTK_BOX( hbox ), entry, TRUE, TRUE, 0 );
+	gtk_widget_show( entry );
+	AddDialogData( entry, &m_strNodAssets, DLG_ENTRY_TEXT );
+
+	button = gtk_button_new_with_label( _( "..." ) );
+	g_signal_connect( G_OBJECT( button ), "clicked", G_CALLBACK( OnBtnBrowseNodAssets ), this );
+	gtk_box_pack_start( GTK_BOX( hbox ), button, FALSE, FALSE, 0 );
+	gtk_widget_show( button );
+
 	hbox = gtk_hbox_new( FALSE, 0 );
 	gtk_box_pack_start( GTK_BOX( vbox1 ), hbox, FALSE, FALSE, 0 );
 	gtk_widget_show( hbox );
@@ -3580,10 +3744,12 @@ void CGameInstall::Run() {
 	if ( m_availGames[0] == GAME_NONE ) {
 		return;
 	}
+
 	if ( DoModal() == IDCANCEL ) {
 		Sys_Printf( "game dialog cancelled\n" );
 		return;
 	}
+
 	Sys_Printf( "combo: %d name: %s engine: %s mod: %s\n", m_nComboSelect, m_strName.GetBuffer(), m_strEngine.GetBuffer(), m_strMod.GetBuffer() );
 
 	// Resolve the game pack and .game file
@@ -3661,6 +3827,10 @@ void CGameInstall::Run() {
 		gamePack = UNVANQUISHED_PACK;
 		gameFilePath += UNVANQUISHED_GAME;
 		break;
+	case GAME_SCGHOST:
+		gamePack = SCGHOST_PACK;
+		gameFilePath += SCGHOST_GAME;
+		break;
 	default:
 		Error( "Invalid game selected: %d", m_availGames[ m_nComboSelect ] );
 	}
@@ -3704,6 +3874,29 @@ void CGameInstall::Run() {
 
 		break;
 	}
+
+	case GAME_SCGHOST: {
+		if ( m_strNodAssets.GetLength() ) {
+			xmlChar *escaped = xmlEncodeSpecialChars( NULL, reinterpret_cast<const xmlChar *>( m_strNodAssets.GetBuffer() ) );
+			if ( !escaped ) {
+				Error( "Failed to encode NOD asset path\n" );
+			}
+
+			fprintf( fg, "  nod_assetpath=\"%s\"\n", reinterpret_cast<const char *>( escaped ) );
+			xmlFree( escaped );
+		}
+
+		fprintf( fg, "  prefix=\".scghost\"\n" );
+		fprintf( fg, "  basegame=\"nod\"\n" );
+		fprintf( fg, "  no_patch=\"true\"\n" );
+		fprintf( fg, "  no_maps_in_home=\"true\"\n" );
+		fprintf( fg, "  default_scale=\"1.0\"\n" );
+		fprintf( fg, "  " ENGINE_ATTRIBUTE "=\"\"\n" );
+		fprintf( fg, "  " MP_ENGINE_ATTRIBUTE "=\"\"\n" );
+		fprintf( fg, "  caulk_shader=\"textures/nod/placeholder\"\n" );
+		break;
+	}
+
 	case GAME_Q2:
 	{
 		fprintf( fg, "  idtech2=\"true\"\n" );
@@ -3714,6 +3907,7 @@ void CGameInstall::Run() {
 
 		break;
 	}
+
 	case GAME_Q2_REMASTER:
 	{
 		fprintf( fg, "  idtech2=\"true\"\n" );
@@ -3726,6 +3920,7 @@ void CGameInstall::Run() {
 
 		break;
 	}
+
 	case GAME_Q3: {
 		fprintf( fg, "  prefix=\".q3a\"\n" );
 		fprintf( fg, "  basegame=\"baseq3\"\n" );
@@ -3737,19 +3932,23 @@ void CGameInstall::Run() {
 			source += "baseq3/scripts/default_shaderlist.txt";
 			radCopyFile( source.GetBuffer(), dest.GetBuffer() );
 		}
+
 		break;
 	}
+
 	case GAME_URT: {
 		fprintf( fg, "  prefix=\".q3a\"\n" );
 		fprintf( fg, "  basegame=\"q3ut4\"\n" );
 		break;
 	}
+
 	case GAME_UFOAI: {
 		fprintf( fg, "  prefix=\".ufoai\"\n" );
 		fprintf( fg, "  basegame=\"base\"\n" );
 		fprintf( fg, "  no_patch=\"true\"\n" );
 		break;
 	}
+
 	case GAME_QUETOO: {
 #if defined( __linux__ ) || defined( __BSD__ ) || defined( __APPLE__ )
 		fprintf( fg, "  " ENGINE_ATTRIBUTE "=\"quetoo\"\n" );
@@ -3764,21 +3963,25 @@ void CGameInstall::Run() {
 		fprintf( fg, "  default_scale=\"0.25\"\n" );
 		break;
 	}
+
 	case GAME_WARSOW: {
 		fprintf( fg, "  prefix=\".warsow\"\n" );
 		fprintf( fg, "  basegame=\"basewsw\"\n" );
 		break;
 	}
+
 	case GAME_NEXUIZ: {
 		fprintf( fg, "  prefix=\".nexuiz\"\n" );
 		fprintf( fg, "  basegame=\"data\"\n" );
 		break;
 	}
+
 	case GAME_TREMULOUS: {
 		fprintf( fg, "  prefix=\".tremulous\"\n" );
 		fprintf( fg, "  basegame=\"base\"\n" );
 		break;
 	}
+
 	case GAME_JA: {
 		fprintf( fg, "  prefix=\".ja\"\n" );
 		fprintf( fg, "  basegame=\"base\"\n" );
@@ -3793,14 +3996,17 @@ void CGameInstall::Run() {
 			source += "base/scripts/default_shaderlist.txt";
 			radCopyFile( source.GetBuffer(), dest.GetBuffer() );
 		}
+
 		break;
 	}
+
 	case GAME_REACTION: {
 		fprintf( fg, "  prefix=\".Reaction\"\n" );
 		fprintf( fg, "  basegame=\"Boomstick\"\n" );
 		fprintf( fg, "  default_scale=\"0.5\"\n" );
 		break;
 	}
+
 	case GAME_ET: {
 #ifdef _WIN32
 		fprintf( fg, "  " ENGINE_ATTRIBUTE "=\"ET.exe\"\n");
@@ -3817,8 +4023,10 @@ void CGameInstall::Run() {
 			source += "etmain/scripts/default_shaderlist.txt";
 			radCopyFile( source.GetBuffer(), dest.GetBuffer() );
 		}
+
 		break;
 	}
+
 	case GAME_QL: {
 		fprintf( fg, "  prefix=\".quakelive/quakelive/home\"\n" );
 		fprintf( fg, "  basegame=\"baseq3\"\n" );
@@ -3830,8 +4038,10 @@ void CGameInstall::Run() {
 			source += "baseq3/scripts/default_shaderlist.txt";
 			radCopyFile( source.GetBuffer(), dest.GetBuffer() );
 		}
+
 		break;
 	}
+
 	case GAME_STVEF: {
 		fprintf( fg, "  prefix=\".stvef\"\n" );
 		fprintf( fg, "  basegame=\"baseEF\"\n" );
@@ -3846,8 +4056,10 @@ void CGameInstall::Run() {
 			source += "baseEF/scripts/default_shaderlist.txt";
 			radCopyFile( source.GetBuffer(), dest.GetBuffer() );
 		}
+
 		break;
 	}
+
 	case GAME_WOLF: {
 		fprintf( fg, "  prefix=\".wolf\"\n" );
 		fprintf( fg, "  basegame=\"main\"\n" );
@@ -3859,8 +4071,10 @@ void CGameInstall::Run() {
 			source += "main/scripts/default_shaderlist.txt";
 			radCopyFile( source.GetBuffer(), dest.GetBuffer() );
 		}
+
 		break;
 	}
+
 	case GAME_UNVANQUISHED: {
 		fprintf( fg, "  prefix=\".unvanquished\"\n" );
 		fprintf( fg, "  basegame=\"pkg\"\n" );
@@ -3873,9 +4087,11 @@ void CGameInstall::Run() {
 			source += "pkg/scripts/default_shaderlist.txt";
 			radCopyFile( source.GetBuffer(), dest.GetBuffer() );
 		}
+
 		break;
 	}
 	}
+
 	fprintf( fg, "/>\n" );
 	fclose( fg );
 }
@@ -3897,55 +4113,76 @@ void CGameInstall::ScanGames() {
 		if ( stricmp( dirname, Q3_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_Q3;
 		}
+
 		if ( stricmp( dirname, URT_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_URT;
 		}
+
 		if ( stricmp( dirname, UFOAI_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_UFOAI;
 		}
+
 		if ( stricmp( dirname, QUETOO_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_QUETOO;
 		}
+
 		if ( stricmp( dirname, WARSOW_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_WARSOW;
 		}
+
 		if ( stricmp( dirname, NEXUIZ_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_NEXUIZ;
 		}
+
 		if ( stricmp( dirname, Q2_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_Q2;
 		}
+
 		if ( stricmp( dirname, Q2_REMASTER_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_Q2_REMASTER;
 		}
+
 		if ( stricmp( dirname, TREMULOUS_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_TREMULOUS;
 		}
+
 		if ( stricmp( dirname, JA_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_JA;
 		}
+
 		if ( stricmp( dirname, REACTION_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_REACTION;
 		}
+
 		if ( stricmp( dirname, ET_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_ET;
 		}
+
 		if ( stricmp( dirname, QL_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_QL;
 		}
+
 		if ( stricmp( dirname, STVEF_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_STVEF;
 		}
+
 		if ( stricmp( dirname, WOLF_PACK ) == 0) {
 			m_availGames[ iGame++ ] = GAME_WOLF;
 		}
+
 		if ( stricmp( dirname, Q1_PACK ) == 0 ) {
 			m_availGames[ iGame++ ] = GAME_Q1;
 		}
+
 		if ( stricmp( dirname, UNVANQUISHED_PACK ) == 0) {
 			m_availGames[ iGame++ ] = GAME_UNVANQUISHED;
 		}
+
+		if ( stricmp( dirname, SCGHOST_PACK ) == 0 ) {
+			m_availGames[ iGame++ ] = GAME_SCGHOST;
+		}
 	}
+
 	Sys_Printf( "No installable games found in: %s\n",
 				pakPaths.GetBuffer() );
 }

@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: brush_primit.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -73,12 +99,15 @@ void ComputeAxisBase( vec3_t normal,vec3_t texS,vec3_t texT ){
 	if ( fabs( normal[0] ) < 1e-6 ) {
 		normal[0] = 0.0f;
 	}
+
 	if ( fabs( normal[1] ) < 1e-6 ) {
 		normal[1] = 0.0f;
 	}
+
 	if ( fabs( normal[2] ) < 1e-6 ) {
 		normal[2] = 0.0f;
 	}
+
 	RotY = -atan2( normal[2],sqrt( normal[1] * normal[1] + normal[0] * normal[0] ) );
 	RotZ = atan2( normal[1],normal[0] );
 	// rotate (0,1,0) and (0,0,1) to compute texS and texT
@@ -105,6 +134,7 @@ void FaceToBrushPrimitFace( face_t *f ){
 	if ( f->plane.normal[0] == 0.0f && f->plane.normal[1] == 0.0f && f->plane.normal[2] == 0.0f ) {
 		Sys_FPrintf( SYS_WRN, "Warning : f->plane.normal is (0,0,0) in FaceToBrushPrimitFace\n" );
 	}
+
 	// check d_texture
 	if ( !f->d_texture ) {
 		Sys_FPrintf( SYS_WRN, "Warning : f.d_texture is NULL in FaceToBrushPrimitFace\n" );
@@ -138,18 +168,23 @@ void FaceToBrushPrimitFace( face_t *f ){
 }
 
 // compute texture coordinates for the winding points
-void EmitBrushPrimitTextureCoordinates( face_t * f, winding_t * w ){
+void EmitBrushPrimitTextureCoordinates( face_t *f, winding_t *w ){
+	EmitBrushPrimitTextureCoordinates( f, w, false );
+}
+
+void EmitBrushPrimitTextureCoordinates( face_t * f, winding_t * w, bool preserveConstant ){
 	vec3_t texX,texY;
 	vec_t x,y;
 	// compute axis base
 	ComputeAxisBase( f->plane.normal,texX,texY );
 	// in case the texcoords matrix is empty, build a default one
 	// same behaviour as if scale[0]==0 && scale[1]==0 in old code
-	if ( f->brushprimit_texdef.coords[0][0] == 0 && f->brushprimit_texdef.coords[1][0] == 0 && f->brushprimit_texdef.coords[0][1] == 0 && f->brushprimit_texdef.coords[1][1] == 0 ) {
+	if ( !preserveConstant && f->brushprimit_texdef.coords[0][0] == 0 && f->brushprimit_texdef.coords[1][0] == 0 && f->brushprimit_texdef.coords[0][1] == 0 && f->brushprimit_texdef.coords[1][1] == 0 ) {
 		f->brushprimit_texdef.coords[0][0] = 1.0f;
 		f->brushprimit_texdef.coords[1][1] = 1.0f;
 		ConvertTexMatWithQTexture( &f->brushprimit_texdef, NULL, &f->brushprimit_texdef, f->d_texture );
 	}
+
 	int i;
 	for ( i = 0 ; i < w->numpoints ; i++ )
 	{
@@ -210,6 +245,7 @@ void TexMatToFakeTexCoords( vec_t texMat[2][3], float shift[2], float *rot, floa
 	else{
 		*rot = RAD2DEG( atan2( texMat[1][0] * 1.0L, texMat[0][0] * 1.0L ) );
 	}
+
 	shift[0] = -texMat[0][2];
 	shift[1] = texMat[1][2];
 }
@@ -347,11 +383,13 @@ void Face_FitTexture_BrushPrimit( face_t *f, vec3_t mins, vec3_t maxs, int nHeig
 			if ( val < BBoxSTMin[j] ) {
 				BBoxSTMin[j] = val;
 			}
+
 			if ( val > BBoxSTMax[j] ) {
 				BBoxSTMax[j] = val;
 			}
 		}
 	}
+
 	// we have the three points of the BBox (BBoxSTMin[0].BBoxSTMin[1]) (BBoxSTMax[0],BBoxSTMin[1]) (BBoxSTMin[0],BBoxSTMax[1]) in ST space
 	// the BP matrix we are looking for gives (0,0) (nwidth,0) (0,nHeight) coordinates in (Sfit,Tfit) space to these three points
 	// we have A(Sfit,Tfit) = (0,0) = Mf * A(TexS,TexT) = N * M * A(TexS,TexT) = N * A(S,T)
@@ -476,17 +514,24 @@ void TextureLockTransformation_BrushPrimit( face_t *f ){
 	else
 	{
 		VectorSubtract( Orig, txl_origin, temp );
-		for ( j = 0 ; j < 3 ; j++ )
+		for ( j = 0 ; j < 3 ; j++ ) {
 			rOrig[j] = DotProduct( temp, txl_matrix[j] ) + txl_origin[j];
+		}
+
 		VectorSubtract( texS, txl_origin, temp );
-		for ( j = 0 ; j < 3 ; j++ )
+		for ( j = 0 ; j < 3 ; j++ ) {
 			rvecS[j] = DotProduct( temp, txl_matrix[j] ) + txl_origin[j];
+		}
+
 		VectorSubtract( texT, txl_origin, temp );
-		for ( j = 0 ; j < 3 ; j++ )
+		for ( j = 0 ; j < 3 ; j++ ) {
 			rvecT[j] = DotProduct( temp, txl_matrix[j] ) + txl_origin[j];
+		}
+
 		// we also need the axis base of the target plane, apply the transformation matrix to the normal too..
-		for ( j = 0 ; j < 3 ; j++ )
+		for ( j = 0 ; j < 3 ; j++ ) {
 			rNormal[j] = DotProduct( f->plane.normal, txl_matrix[j] );
+	}
 	}
 
 	// compute rotated plane axis base

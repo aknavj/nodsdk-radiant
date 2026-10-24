@@ -20,6 +20,13 @@ usePNG = True
 settings.SetupEnvironment( env, config['name'], useGtk = useGtk, useJPEG = useJPEG, useZ = useZ, usePNG = usePNG )
 proj = utils.vcxproj( os.path.join( GetLaunchDir(), project ) )
 
+if libname == 'model':
+	env.Append( CPPPATH = [
+		os.path.join( GetLaunchDir(), 'libs', 'nodsdk-scghost', 'src', 'parsers' ),
+		os.path.join( GetLaunchDir(), 'libs', 'glm' ),
+	] )
+	env.Append( CXXFLAGS = [ '-std=c++17' ] )
+
 # some filtering. may need to improve that
 add_sources = []
 ( drop, files ) = proj.filterSource( r'.*l_net_wins\.c' )

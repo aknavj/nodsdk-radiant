@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: cpicosurface.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -20,6 +46,7 @@
  */
 
 #include "cpicosurface.h"
+#include "nodmodel.h"
 
 // public
 
@@ -37,7 +64,8 @@ CPicoSurface::CPicoSurface( picoSurface_t *pSurface ){
 	// jdolan: If the shader fails to load, try skin.tga in the model's
 	// directory as a fall-back. This is a hack for malformed models.
 
-	if ( m_shader->IsDefault() ) {
+	if ( m_shader->IsDefault() && !NodModelIsSupported( m_pSurface->model->name ) &&
+		 !g_str_has_prefix( GetShaderName(), "textures/nod/" ) ) {
 		Sys_FPrintf( SYS_WRN, "WARNING: Failed to load shader %s for %s\n", m_shader->getName(), m_pSurface->model->name );
 
 		gchar *dir = g_path_get_dirname( m_pSurface->model->name );
@@ -70,6 +98,7 @@ void CPicoSurface::Draw( int state, IShader *pShader, int rflags ){
 			if(bTrans != bDrawBlend) {
 				return;
 			}
+
 			g_QglTable.m_pfn_qglBindTexture( GL_TEXTURE_2D, pShader->getTexture()->texture_number );
 			if ( ( rflags & DRAW_RF_CAM ) && ( pShader->getFlags() & QER_ALPHAFUNC ) ) {
 				int nFunc = 0;
@@ -121,8 +150,10 @@ void CPicoSurface::Draw( int state, IShader *pShader, int rflags ){
 					g_QglTable.m_pfn_qglColor4ubv( vertexColor );
 				}
 			}
+
 			g_QglTable.m_pfn_qglVertex3fv( PicoGetSurfaceXYZ( m_pSurface, PicoGetSurfaceIndex( m_pSurface, j ) ) );
 		}
+
 		g_QglTable.m_pfn_qglEnd();
 		/*g_QglTable.m_pfn_qglVertexPointer( 3, GL_FLOAT, 0, PicoGetSurfaceXYZ( m_pSurface, 0 ) );
 		   g_QglTable.m_pfn_qglNormalPointer( GL_FLOAT, 0, PicoGetSurfaceNormal( m_pSurface, 0 ) );
@@ -183,6 +214,7 @@ void CPicoSurface::AccumulateBBox(){
 		p = PicoGetSurfaceXYZ( m_pSurface,i );
 		aabb_extend_by_point( &m_BBox, p );
 	}
+
 	aabb_update_radius( &m_BBox );
 }
 
@@ -203,11 +235,13 @@ bool CPicoSurface::TestRay( const ray_t *ray, vec_t *dist ) const {
 					*dist = local_dist;
 				}
 			}
+
 			break;
 		default:
 			Sys_FPrintf( SYS_ERR, "ERROR: Unsupported Pico Surface Type: %i", PicoGetSurfaceType( m_pSurface ) );
 			break;
 		}
 	}
+
 	return ( *dist < start_dist );
 }
