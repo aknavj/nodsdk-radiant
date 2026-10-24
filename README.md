@@ -1,3 +1,5 @@
+[logo](install/bitmaps/logo.png)
+
 # OpenNOD Radiant
 
 GtkRadiant fork for StarCraft: Ghost / NOD map restoration and authoring.
