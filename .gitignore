@@ -1,13 +1,30 @@
 .settings
 .DS_Store
 
+# Build outputs
 /apple/target/*
 /build
+/.scghost-build/
 /install
 /packs
 /tools/urt/tools/quake3/q3map2/Debug
 /tools/urt/tools/quake3/q3map2/Release
 /.sconsign.dblite
+/site.sconf
+
+# Generated version markers; version.h remains tracked
+/include/RADIANT_MAJOR
+/include/RADIANT_MINOR
+/include/version
+
+# Downloaded dependencies
+/bspc/
+/libs/nodsdk-scghost/
+/libs/glm/
+/*.part
+*.zip
+
+# Visual Studio state
 /.vs/*
 /radiant.opensdf
 /radiant.sdf
@@ -15,19 +32,23 @@
 /radiant.v11.suo
 /radiant.v12.suo
 /radiant.VC.db
-/site.sconf
-/libs/nodsdk-scghost/
-/libs/glm/
+*.VC.db-shm
+*.VC.db-wal
+*.VC.VC.opendb
+*.vcxproj.user
 
+# Compiler, debug and Python artifacts
 *.log
 *.pdb
 *.obj
-*.pyc
+*.o
 *.so
+*.ilk
+*.idb
+*.ipch
 *.tlog
-*.vcxproj.user
-*.zip
-
-
-
-
+*.lastbuildstate
+*.dmp
+*.core
+__pycache__/
+*.py[cod]
