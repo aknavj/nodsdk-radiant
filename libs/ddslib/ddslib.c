@@ -207,7 +207,7 @@ int DDSGetInfo( ddsBuffer_t *dds, int *width, int *height, ddsPF_t *pf ){
    extracts colors from a dds color block
  */
 
-static void DDSGetColorBlockColors( ddsColorBlock_t *block, ddsColor_t colors[ 4 ] ){
+static void DDSGetColorBlockColors( ddsColorBlock_t *block, ddsColor_t colors[ 4 ], int fourColors ){
 	unsigned short word;
 
 
@@ -222,7 +222,7 @@ static void DDSGetColorBlockColors( ddsColorBlock_t *block, ddsColor_t colors[ 4
 	word >>= 5;
 	colors[ 0 ].g = (unsigned char) word;
 	colors[ 0 ].g <<= 2;
-	colors[ 0 ].g |= ( colors[ 0 ].g >> 5 );
+	colors[ 0 ].g |= ( colors[ 0 ].g >> 6 );
 	word >>= 6;
 	colors[ 0 ].r = (unsigned char) word;
 	colors[ 0 ].r <<= 3;
@@ -239,14 +239,14 @@ static void DDSGetColorBlockColors( ddsColorBlock_t *block, ddsColor_t colors[ 4
 	word >>= 5;
 	colors[ 1 ].g = (unsigned char) word;
 	colors[ 1 ].g <<= 2;
-	colors[ 1 ].g |= ( colors[ 1 ].g >> 5 );
+	colors[ 1 ].g |= ( colors[ 1 ].g >> 6 );
 	word >>= 6;
 	colors[ 1 ].r = (unsigned char) word;
 	colors[ 1 ].r <<= 3;
 	colors[ 1 ].r |= ( colors[ 1 ].r >> 5 );
 
 	/* use this for all but the super-freak math method */
-	if ( block->colors[ 0 ] > block->colors[ 1 ] ) {
+	if ( fourColors || (unsigned short) DDSLittleShort( block->colors[ 0 ] ) > (unsigned short) DDSLittleShort( block->colors[ 1 ] ) ) {
 		/* four-color block: derive the other two colors.
 		   00 = color 0, 01 = color 1, 10 = color 2, 11 = color 3
 		   these two bit codes correspond to the 2-bit fields
@@ -288,8 +288,8 @@ static void DDSGetColorBlockColors( ddsColorBlock_t *block, ddsColor_t colors[ 4
 
 		/* random color to indicate alpha */
 		colors[ 3 ].r = 0x00;
-		colors[ 3 ].g = 0xff;
-		colors[ 3 ].b = 0xff;
+		colors[ 3 ].g = 0x00;
+		colors[ 3 ].b = 0x00;
 		colors[ 3 ].a = 0x00;
 	}
 }
@@ -526,7 +526,7 @@ static int DDSDecompressDXT1( ddsBuffer_t *dds, int width, int height, unsigned 
 		/* walk x */
 		for ( x = 0; x < xBlocks; x++, block++ )
 		{
-			DDSGetColorBlockColors( block, colors );
+			DDSGetColorBlockColors( block, colors, 0 );
 			pixel = (unsigned int*) ( pixels + x * 16 + ( y * 4 ) * width * 4 );
 			DDSDecodeColorBlock( pixel, block, width, (unsigned int*) colors );
 		}
@@ -576,7 +576,7 @@ static int DDSDecompressDXT3( ddsBuffer_t *dds, int width, int height, unsigned 
 
 			/* get color block */
 			block++;
-			DDSGetColorBlockColors( block, colors );
+			DDSGetColorBlockColors( block, colors, 1 );
 
 			/* decode color block */
 			pixel = (unsigned int*) ( pixels + x * 16 + ( y * 4 ) * width * 4 );
@@ -631,7 +631,7 @@ static int DDSDecompressDXT5( ddsBuffer_t *dds, int width, int height, unsigned 
 
 			/* get color block */
 			block++;
-			DDSGetColorBlockColors( block, colors );
+			DDSGetColorBlockColors( block, colors, 1 );
 
 			/* decode color block */
 			pixel = (unsigned int*) ( pixels + x * 16 + ( y * 4 ) * width * 4 );

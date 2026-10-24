@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: miscmodel.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -58,12 +84,15 @@ CEntityMiscModel::~CEntityMiscModel (){
 		if ( !g_model_cache.DeleteByNameAndFrame( m_name,m_frame ) && m_model ) {
 			m_model->RemoveParent( this );
 		}
+
 		m_model = NULL;
 		delete [] m_name;
 	}
 
-	for ( i = 0; i < m_remaps->len; i++ )
+	for ( i = 0; i < m_remaps->len; i++ ) {
 		delete (remap_t*)m_remaps->pdata[i];
+	}
+
 	g_ptr_array_free( m_remaps, FALSE );
 
 	for ( i = 0; i < m_shaders->len; i++ )
@@ -71,6 +100,7 @@ CEntityMiscModel::~CEntityMiscModel (){
 		( *(IShader**)m_shaders->pdata[i] )->DecRef();
 		delete (IShader**)m_shaders->pdata[i];
 	}
+
 	g_ptr_array_free( m_shaders, FALSE );
 
 	if ( m_entity ) {
@@ -171,6 +201,7 @@ void CEntityMiscModel::OnKeyChanged( entity_t *e, const char *key ){
 		if ( value[0] != '\0' ) {
 			sscanf( value, "%f %f %f", &m_euler[0], &m_euler[2], &m_euler[1] );
 		}
+
 		UpdateCachedData();
 	}
 	else if ( strcmp( key,"modelscale" ) == 0 || strcmp( key,"modelscale_vec" ) == 0 ) {
@@ -185,6 +216,7 @@ void CEntityMiscModel::OnKeyChanged( entity_t *e, const char *key ){
 				Sys_FPrintf( SYS_WRN, "WARNING: ignoring 0 modelscale key\n" );
 			}
 		}
+
 		value = ValueForKey( e,"modelscale_vec" );
 		if ( value[0] != '\0' ) {
 			sscanf( value, "%f %f %f", &m_scale[0], &m_scale[1], &m_scale[2] );
@@ -193,6 +225,10 @@ void CEntityMiscModel::OnKeyChanged( entity_t *e, const char *key ){
 				Sys_FPrintf( SYS_WRN, "WARNING: ignoring 0 0 0 modelscale_vec key\n" );
 			}
 		}
+
+		UpdateCachedData();
+	}
+	else if ( strcmp( key,"nod_modelscale" ) == 0 || strcmp( key,"nod_modeloffset" ) == 0 ) {
 		UpdateCachedData();
 	}
 	else if ( strcmp( key,"origin" ) == 0 ) {
@@ -236,8 +272,9 @@ void CEntityMiscModel::OnKeyChanged( entity_t *e, const char *key ){
 
 		pRemap->m_remap[0] = ch = pRemap->m_remapbuff;
 
-		while ( *ch && *ch != ';' )
+		while ( *ch && *ch != ';' ) {
 			ch++;
+		}
 
 		if ( *ch == '\0' ) {
 			// bad remap
@@ -267,9 +304,11 @@ void CEntityMiscModel::SetName( const char *name ){
 		if ( strcmp( m_name, name ) == 0 ) {
 			return;
 		}
+
 		if ( !g_model_cache.DeleteByNameAndFrame( m_name,m_frame ) && m_model ) {
 			m_model->RemoveParent( this );
 		}
+
 		delete [] m_name;
 	}
 
@@ -312,9 +351,15 @@ void CEntityMiscModel::SetFrame( const int frame ){
 void CEntityMiscModel::UpdateCachedData(){
 	aabb_t aabb_temp;
 	bbox_t bbox_temp;
+	vec3_t translated, scaled;
+	if ( !ModelTransform_Native( ValueForKey( m_entity,"nod_modelscale" ),
+			ValueForKey( m_entity,"nod_modeloffset" ), m_translate, m_scale, translated, scaled ) ) {
+		Sys_FPrintf( SYS_WRN, "WARNING: invalid native model transform; retaining previous preview\n" );
+		return;
+	}
 
 	m4x4_identity( m_transform );
-	m4x4_pivoted_transform_by_vec3( m_transform, m_translate, m_euler, m_scale, m_pivot );
+	m4x4_pivoted_transform_by_vec3( m_transform, translated, m_euler, scaled, m_pivot );
 	memcpy( m_inverse_transform, m_transform, sizeof( m4x4_t ) );
 	if ( m4x4_invert( m_inverse_transform ) == 1 ) {
 		Sys_FPrintf( SYS_ERR, "ERROR: Singular Matrix, cannot invert" );
@@ -359,6 +404,7 @@ void CEntityMiscModel::UpdateShaders(){
 				delete (IShader**)m_shaders->pdata[i];
 			}
 		}
+
 		return;
 	}
 
@@ -399,6 +445,7 @@ void CEntityMiscModel::UpdateShaders(){
 						if ( *pShader ) {
 							( *pShader )->DecRef();
 						}
+
 						*pShader = QERApp_Shader_ForName( pRemap->m_remap[1] );
 					}
 
@@ -415,6 +462,7 @@ void CEntityMiscModel::UpdateShaders(){
 					if ( *pShader ) {
 						( *pShader )->DecRef();
 					}
+
 					*pShader = QERApp_Shader_ForName( pGlobRemap->m_remap[1] );
 				}
 			}
@@ -424,6 +472,7 @@ void CEntityMiscModel::UpdateShaders(){
 					if ( *pShader ) {
 						( *pShader )->DecRef();
 					}
+
 					*pShader = QERApp_Shader_ForName( surfShaderName );
 				}
 			}
@@ -435,6 +484,7 @@ void CEntityMiscModel::UpdateShaders(){
 				if ( *pShader ) {
 					( *pShader )->DecRef();
 				}
+
 				*pShader = QERApp_Shader_ForName( surfShaderName );
 			}
 		}

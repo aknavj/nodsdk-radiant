@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: entity_entitymodel.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -22,24 +48,27 @@
 #include <stdlib.h>
 
 #include "entity_entitymodel.h"
+#include "../../radiant/nodclass.h"
+#include "entity.h"
+#include "../../radiant/nodbounds.h"
 
 void Entity_UpdateClass( entity_t *e, const char* value ){
-	if ( strcmp( value, "misc_model" ) == 0
-		 || ( strcmp( value, "misc_gamemodel" ) == 0 )
-		 || ( strcmp( value, "model_static" ) == 0 ) ) {
-		if ( e->model.pRender ) {
-			e->model.pRender->DecRef();
-		}
-		if ( e->model.pSelect ) {
-			e->model.pSelect->DecRef();
-		}
-		if ( e->model.pEdit ) {
-			e->model.pEdit->DecRef();
-		}
-		e->model.pRender = NULL;
-		e->model.pSelect = NULL;
-		e->model.pEdit = NULL;
+	if ( e->model.pRender ) {
+		e->model.pRender->DecRef();
+	}
 
+	if ( e->model.pSelect ) {
+		e->model.pSelect->DecRef();
+	}
+
+	if ( e->model.pEdit ) {
+		e->model.pEdit->DecRef();
+	}
+
+	e->model.pRender = NULL;
+	e->model.pSelect = NULL;
+	e->model.pEdit = NULL;
+	if ( ModelTransform_IsEntity( value, ValueForKey( e, "model" ) ) ) {
 		CEntityMiscModel *model = new CEntityMiscModel( e );
 
 		e->model.pRender = (IRender*)model;
@@ -51,24 +80,13 @@ void Entity_UpdateClass( entity_t *e, const char* value ){
 
 		model->DecRef();
 	}
-	else if ( e->eclass && e->eclass->modelpath ) {
-		if ( e->model.pRender ) {
-			e->model.pRender->DecRef();
-		}
-		if ( e->model.pSelect ) {
-			e->model.pSelect->DecRef();
-		}
-		if ( e->model.pEdit ) {
-			e->model.pEdit->DecRef();
-		}
-		e->model.pRender = NULL;
-		e->model.pSelect = NULL;
-		e->model.pEdit = NULL;
-
-		CEntityEclassModel *model = new CEntityEclassModel;
+	else if ( e->eclass && ( e->eclass->modelpath || NodEntity_IsPoint( value ) || NodClass_Registered( e->eclass->comments ) ) ) {
+		CEntityEclassModel *model = new CEntityEclassModel( e );
 
 		model->SetEclass( e->eclass );
-		model->SetName( e->eclass->modelpath );
+		if ( e->eclass->modelpath && !NodEntity_IsPoint( value ) ) {
+			model->SetName( e->eclass->modelpath );
+		}
 
 		e->model.pRender = (IRender*)model;
 		e->model.pRender->IncRef();

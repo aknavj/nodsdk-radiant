@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: shaders.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (c) 2001, Loki software, inc.
    All rights reserved.
 
@@ -41,6 +67,7 @@
 #include "mathlib.h"
 #include "missing.h" //++timo FIXME: this one is intended to go away some day, it's MFC compatibility classes
 #include "shaders.h"
+#include "nod_materials.h"
 
 // some forward declarations
 IShader * WINAPI QERApp_Shader_ForName( const char *name );
@@ -55,6 +82,48 @@ CShaderArray g_Shaders;
 // NOTE: make sure you don't add a shader that's already in
 // NOTE: all shaders in this array are in the main g_Shaders
 CShaderArray g_ActiveShaders;
+
+static NodTextureIndex g_NodTextures;
+static bool g_NodTexturesIndexed = false;
+
+static bool IsNodProfile(){
+	return !strcmp( g_FuncTable.m_pfnGetGameFile(), "scghost.game" );
+}
+
+static void IndexNodTextureDirectory( const std::string &directory ){
+	const char *extensions[] = { "dds", "tga", "jpg", "png" };
+	for ( size_t i = 0; i < sizeof( extensions ) / sizeof( extensions[0] ); ++i ) {
+		GSList *files = g_VFSTable.m_pfnGetFileList( directory.c_str(), extensions[i] );
+		for ( GSList *file = files; file; file = file->next ) {
+			g_NodTextures.Add( directory + "/" + static_cast<const char *>( file->data ) );
+		}
+
+		g_VFSTable.m_pfnClearFileDirList( &files );
+	}
+
+	GSList *directories = g_VFSTable.m_pfnGetDirList( directory.c_str() );
+	for ( GSList *dir = directories; dir; dir = dir->next ) {
+		IndexNodTextureDirectory( directory + "/" + static_cast<const char *>( dir->data ) );
+	}
+
+	g_VFSTable.m_pfnClearFileDirList( &directories );
+}
+
+static std::string NodTextureForName( const std::string &reference ){
+	if ( !g_NodTexturesIndexed ) {
+		IndexNodTextureDirectory( "Materials" );
+		IndexNodTextureDirectory( "3D/Materials" );
+		g_NodTexturesIndexed = true;
+	}
+
+	const std::string path = g_NodTextures.Resolve( reference );
+	if ( path.empty() || path.size() >= QER_MAX_NAMELEN ) {
+		Sys_FPrintf( SYS_WRN, "NOD texture '%s' is missing, ambiguous, or exceeds the texture path limit\n", reference.c_str() );
+		return std::string();
+	}
+
+	return path;
+}
 
 // clean a texture name to the qtexture_t name format we use internally
 // NOTE: there are so many cases .. this may need to get updated to cover all of them
@@ -73,7 +142,7 @@ const char *WINAPI QERApp_CleanTextureName( const char *name, bool bAddTexture =
 
 	strcpy( stdName, name );
 	g_FuncTable.m_pfnQE_ConvertDOSToUnixName( stdName, stdName );
-	if ( stdName[strlen( name ) - 4] == '.' ) {
+	if ( strlen( name ) >= 4 && stdName[strlen( name ) - 4] == '.' ) {
 		// strip extension
 		stdName[strlen( stdName ) - 4] = '\0';
 	}
@@ -83,6 +152,7 @@ const char *WINAPI QERApp_CleanTextureName( const char *name, bool bAddTexture =
 		sprintf( aux, "textures/%s", stdName );
 		strcpy( stdName, aux );
 	}
+
 	return stdName;
 }
 
@@ -113,8 +183,10 @@ void CShaderArray::SortShaders(){
 				break;
 			}
 		}
+
 		aux.InsertAt( j, pSort );
 	}
+
 	CPtrArray::RemoveAll();
 	CPtrArray::InsertAt( 0, &aux );
 }
@@ -138,6 +210,7 @@ CShader *CShaderArray::Shader_ForName( const char *name ) const {
 			return pShader;
 		}
 	}
+
 	return NULL;
 }
 
@@ -145,6 +218,9 @@ void CShader::CreateDefault( const char *name ){
 	const char *stdName = QERApp_CleanTextureName( name );
 	m_strTextureName = stdName;
 	setName( name );
+	if ( IsNodProfile() && g_str_has_prefix( name, "textures/nod/" ) ) {
+		m_strTextureName = NodTextureForName( name + strlen( "textures/nod/" ) ).c_str();
+	}
 }
 
 CShader *CShaderArray::Shader_ForTextureName( const char *name ) const {
@@ -164,6 +240,7 @@ CShader *CShaderArray::Shader_ForTextureName( const char *name ) const {
 			return pShader;
 		}
 	}
+
 	return NULL;
 }
 
@@ -179,6 +256,7 @@ void CShaderArray::AddSingle( void *lp ){
 			return;
 		}
 	}
+
 	CPtrArray::Add( lp );
 	static_cast < CShader * >( CPtrArray::GetAt( i ) )->IncRef();
 }
@@ -193,8 +271,9 @@ void CShaderArray::operator =( const class CShaderArray & src ){
 #endif
 	Copy( src );
 	// now go through and IncRef
-	for ( i = 0; i < CPtrArray::GetSize(); i++ )
+	for ( i = 0; i < CPtrArray::GetSize(); i++ ) {
 		static_cast < IShader * >( CPtrArray::GetAt( i ) )->IncRef();
+}
 }
 
 //++timo NOTE: for debugging we may need to keep track and tell wether everything has been properly unloaded
@@ -202,8 +281,10 @@ void CShaderArray::ReleaseAll(){
 	int i;
 	int count = CPtrArray::GetSize();
 	// decref
-	for ( i = 0; i < count; i++ )
+	for ( i = 0; i < count; i++ ) {
 		static_cast < IShader * >( CPtrArray::GetAt( i ) )->DecRef();
+	}
+
 	// get rid
 	CPtrArray::RemoveAll();
 }
@@ -239,14 +320,18 @@ char *ShaderNameLookup( patchMesh_t * patch ){
 			return static_cast < patchEntry_t * >( PatchShaders.GetAt( i ) )->name;
 		}
 	}
+
 	Sys_FPrintf( SYS_ERR, "ERROR: failed to lookup name in ShaderNameLookup??\n" );
 	return const_cast<char*>(SHADER_NOT_FOUND);
 }
+
 //++timo end clean
 
 // will free all GL binded qtextures and shaders
 // NOTE: doesn't make much sense out of Radiant exit or called during a reload
 void WINAPI QERApp_FreeShaders(){
+	g_NodTextures.Clear();
+	g_NodTexturesIndexed = false;
 	int i;
 	brush_t *b;
 	brush_t *active_brushes;
@@ -260,8 +345,10 @@ void WINAPI QERApp_FreeShaders(){
 	d_qtextures = g_ShadersTable.m_pfnQTextures();
 
 	// store the shader names used by the patches
-	for ( i = 0; i < PatchShaders.GetSize(); i++ )
+	for ( i = 0; i < PatchShaders.GetSize(); i++ ) {
 		delete static_cast < patchMesh_t * >( PatchShaders.GetAt( i ) );
+	}
+
 	PatchShaders.RemoveAll();
 
 	for ( b = active_brushes->next; b != NULL && b != active_brushes; b = b->next )
@@ -270,12 +357,14 @@ void WINAPI QERApp_FreeShaders(){
 			PushPatch( b->pPatch );
 		}
 	}
+
 	for ( b = selected_brushes->next; b != NULL && b != selected_brushes; b = b->next )
 	{
 		if ( b->patchBrush ) {
 			PushPatch( b->pPatch );
 		}
 	}
+
 	for ( b = filtered_brushes->next; b != NULL && b != filtered_brushes; b = b->next )
 	{
 		if ( b->patchBrush ) {
@@ -360,9 +449,10 @@ void Brush_RefreshShader( brush_t *b ){
 		   }*/
 	}
 	else{
-		for ( face_t *f = b->brush_faces ; f ; f = f->next )
+		for ( face_t *f = b->brush_faces ; f ; f = f->next ) {
 			SetShader( f );
 	}
+}
 }
 
 void WINAPI QERApp_ReloadShaders(){
@@ -393,13 +483,18 @@ void WINAPI QERApp_ReloadShaders(){
 	// NOTE: both face_t and patchMesh_t store pointers to the shader and qtexture_t
 	// in an ideal world they would only store shader and access the qtexture_t through it
 	// reassign all current shaders
-	for ( b = active_brushes->next; b != NULL && b != active_brushes; b = b->next )
+	for ( b = active_brushes->next; b != NULL && b != active_brushes; b = b->next ) {
 		Brush_RefreshShader( b );
-	for ( b = selected_brushes->next; b != NULL && b != selected_brushes; b = b->next )
+	}
+
+	for ( b = selected_brushes->next; b != NULL && b != selected_brushes; b = b->next ) {
 		Brush_RefreshShader( b );
+	}
+
 	// do that to the filtered brushes as well (we might have some region compiling going on)
-	for ( b = filtered_brushes->next; b != NULL && b != filtered_brushes; b = b->next )
+	for ( b = filtered_brushes->next; b != NULL && b != filtered_brushes; b = b->next ) {
 		Brush_RefreshShader( b );
+}
 }
 
 int WINAPI QERApp_LoadShadersFromDir( const char *path ){
@@ -490,6 +585,9 @@ bool WINAPI QERApp_IsDirContainingShaders( const char *path ){
 
 bool CShader::Parse(){
 	char *token = g_ScripLibTable.m_pfnToken();
+	const bool nod = IsNodProfile() && g_str_has_suffix( getShaderFileName(), ".nsa" );
+	std::string editorImage, diffuseImage;
+	bool validName = true;
 
 	// the parsing needs to be taken out in another module
 //  Sys_Printf("TODO: CShader::Parse\n");
@@ -498,10 +596,23 @@ bool CShader::Parse(){
 	// we remove the "textures\" part
 	//setName ((char *) &token[9]));
 	// no we don't
-	setName( token );
+	if ( nod ) {
+		const std::string name = std::string( "textures/nod/" ) + token;
+		if ( name.size() >= QER_MAX_NAMELEN ) {
+			Sys_FPrintf( SYS_ERR, "NOD material name exceeds the editor limit: %s\n", token );
+			validName = false;
+		} else {
+			setName( name.c_str() );
+		}
+	} else {
+		setName( token );
+	}
+
 	// name of the qtexture_t we'll use to represent this shader (this one has the "textures\" before)
-	const char *stdName = QERApp_CleanTextureName( token );
-	m_strTextureName = stdName; // FIXME: BC reports stdName is uninitialised?
+	if ( !nod ) {
+		m_strTextureName = QERApp_CleanTextureName( token );
+	}
+
 	g_ScripLibTable.m_pfnGetToken( true );
 	if ( strcmp( token, "{" ) ) {
 		return false;
@@ -520,9 +631,23 @@ bool CShader::Parse(){
 				nMatch--;
 				continue;
 			}
+
+			if ( nod && ( !strcmpi( token, "texture" ) || !strcmpi( token, "diffuseMap" ) ) ) {
+				if ( !g_ScripLibTable.m_pfnGetToken( true ) ) {
+					return false;
+				}
+
+				if ( diffuseImage.empty() ) {
+					diffuseImage = token;
+				}
+
+				continue;
+			}
+
 			if ( nMatch > 1 ) {
 				continue;       // ignore layers for now
 			}
+
 			if ( strcmpi( token, "qer_nocarve" ) == 0 ) {
 				m_nFlags |= QER_NOCARVE;
 			}
@@ -530,12 +655,43 @@ bool CShader::Parse(){
 				if ( g_ScripLibTable.m_pfnGetToken( true ) ) {
 					m_fTrans = (float) atof( token );
 				}
+
 				m_nFlags |= QER_TRANS;
 			}
 			else if ( strcmpi( token, "qer_editorimage" ) == 0 ) {
 				if ( g_ScripLibTable.m_pfnGetToken( true ) ) {
 					// bAddTexture changed to false to allow editorimages in other locations than "textures/"
-					m_strTextureName = QERApp_CleanTextureName( token, false );
+					if ( nod ) {
+						editorImage = token;
+					} else {
+						m_strTextureName = QERApp_CleanTextureName( token, false );
+					}
+				}
+			}
+			else if ( nod && !strcmpi( token, "shader" ) ) {
+				if ( !g_ScripLibTable.m_pfnGetToken( true ) ) {
+					return false;
+				}
+
+				if ( !strcmpi( token, "masked" ) ) {
+					m_nFlags |= QER_ALPHAFUNC;
+					m_nAlphaFunc = GL_GEQUAL;
+					m_fAlphaRef = 0.5f;
+				}
+			}
+			else if ( nod && ( !strcmpi( token, "surfflag" ) || !strcmpi( token, "surfflags" ) ) ) {
+				if ( !g_ScripLibTable.m_pfnGetToken( true ) ) {
+					return false;
+				}
+
+				const unsigned long flags = strtoul( token, NULL, 0 );
+				if ( flags & 1 ) {
+					m_nFlags |= QER_CULL;
+					m_nCull = 2;
+				}
+
+				if ( flags & 8 ) {
+					m_nFlags |= QER_NODRAW;
 				}
 			}
 			else if ( strcmpi( token, "qer_alphafunc" ) == 0 ) {
@@ -555,6 +711,7 @@ bool CShader::Parse(){
 						m_nFlags |= QER_ALPHAFUNC;
 					}
 				}
+
 				if ( g_ScripLibTable.m_pfnGetToken( true ) ) {
 					m_fAlphaRef = (float) atof( token );
 				}
@@ -573,7 +730,7 @@ bool CShader::Parse(){
 					}
 				}
 			}
-			else if ( strcmpi( token, "surfaceparm" ) == 0 ) {
+			else if ( strcmpi( token, "surfaceparm" ) == 0 || ( nod && !strcmpi( token, "qer_surfaceparm" ) ) ) {
 				if ( g_ScripLibTable.m_pfnGetToken( true ) ) {
 					if ( strcmpi( token, "fog" ) == 0 ) {
 						m_nFlags |= QER_FOG;
@@ -593,13 +750,29 @@ bool CShader::Parse(){
 					else if ( strcmpi( token, "lava" ) == 0 ) {
 						m_nFlags |= QER_LAVA;
 					}
+					else if ( nod && !strcmpi( token, "nocull" ) ) {
+						m_nFlags |= QER_CULL;
+						m_nCull = 2;
+					}
 				}
 			}
 		}
+
 		if ( nMatch != 0 ) {
 			return false;
 		}
 	}
+
+	if ( !validName ) {
+		return false;
+	}
+
+	if ( nod ) {
+		const std::string reference = !editorImage.empty() ? editorImage :
+			( !diffuseImage.empty() ? diffuseImage : getName() + strlen( "textures/nod/" ) );
+		m_strTextureName = NodTextureForName( reference ).c_str();
+	}
+
 	return true;
 }
 
@@ -624,6 +797,13 @@ void CShader::RegisterActivate(){
 }
 
 void CShader::Try_Activate(){
+	m_bActivationFailed = false;
+	if ( !m_strTextureName.GetLength() ) {
+		// A cached fallback must still register a new caller reference in Activate().
+		m_pTexture = NULL;
+		return;
+	}
+
 	m_pTexture = QERApp_Try_Texture_ForName( m_strTextureName.GetBuffer() );
 	if ( m_pTexture ) {
 		RegisterActivate();
@@ -634,12 +814,19 @@ void CShader::Try_Activate(){
 // (missing texture, or incorrect shader script), true otherwise
 // the shader is still activated in all cases.
 bool CShader::Activate(){
+	if ( m_pTexture ) {
+		RegisterActivate();
+		return !m_bActivationFailed;
+	}
+
 	Try_Activate();
 	if ( !m_pTexture ) {
 		m_pTexture = QERApp_Texture_ForName2( SHADER_NOTEX );
+		m_bActivationFailed = true;
 		RegisterActivate();
 		return false;
 	}
+
 	return true;
 }
 
@@ -682,6 +869,7 @@ void WINAPI QERApp_LoadShaderFile( const char *filename ){
 				delete pShader;
 			}
 		}
+
 		vfsFreeFile( pBuff );
 	}
 	else
@@ -697,6 +885,7 @@ IShader *WINAPI QERApp_Try_Shader_ForName( const char *name ){
 		// not found
 		return NULL;
 	}
+
 	// we may need to load the texture or use the "shader without texture" one
 	pShader->Activate();
 	pShader->SetDisplayed( true );
@@ -718,6 +907,7 @@ IShader *WINAPI QERApp_CreateShader_ForTextureName( const char *name ){
 	if ( !pShader->Activate() ) {
 		Sys_FPrintf( SYS_WRN, "WARNING: Activate shader failed for %s\n", pShader->getName() );
 	}
+
 	pShader->SetDisplayed( true );
 
 	return pShader;
@@ -731,6 +921,7 @@ IShader *WINAPI QERApp_Shader_ForName( const char *name ){
 		g_FuncTable.m_pfnSysFPrintf( SYS_ERR, "FIXME: name == NULL || strlen(name) == 0 in QERApp_Shader_ForName\n" );
 		return QERApp_Shader_ForName( SHADER_NOT_FOUND );
 	}
+
 	// entities that should be represented with plain colors instead of textures
 	// request a texture name with (r g b) (it's stored in their class_t)
 	if ( name[0] == '(' ) {
@@ -742,6 +933,7 @@ IShader *WINAPI QERApp_Shader_ForName( const char *name ){
 		pShader->SetDisplayed( true );
 		return pShader;
 	}
+
 	return QERApp_CreateShader_ForTextureName( name );
 }
 
@@ -790,6 +982,7 @@ qtexture_t *WINAPI QERApp_Try_Texture_ForName( const char *name ){
 	if ( !q ) {
 		return NULL;
 	}
+
 	g_free( pPixels );
 
 	strcpy( q->name, name );
@@ -797,6 +990,7 @@ qtexture_t *WINAPI QERApp_Try_Texture_ForName( const char *name ){
 	if ( q->name[strlen( q->name ) - 4] == '.' ) {
 		q->name[strlen( q->name ) - 4] = '\0';
 	}
+
 	// hook into the main qtexture_t list
 	qtexture_t **d_qtextures = g_ShadersTable.m_pfnQTextures();
 	q->next = *d_qtextures;
@@ -812,6 +1006,7 @@ int WINAPI QERApp_HasShader( const char *pName ){
 	if ( pShader ) {
 		return 1;
 	}
+
 	return 0;
 }
 
@@ -829,6 +1024,7 @@ qtexture_t *WINAPI QERApp_Texture_ForName2( const char *filename ){
 	if ( q ) {
 		return q;
 	}
+
 	// not found? use "texture not found"
 	q = QERApp_Try_Texture_ForName( SHADER_NOT_FOUND );
 	if ( q ) {
@@ -912,24 +1108,28 @@ void WINAPI QERApp_ReloadShaderFile( const char *name ){
 			SetShader( b->pPatch );
 		}
 		else{
-			for ( f = b->brush_faces; f; f = f->next )
+			for ( f = b->brush_faces; f; f = f->next ) {
 				if ( !strcmp( f->pShader->getShaderFileName(), name ) ) {
 					SetShader( f );
 				}
 		}
 	}
+	}
+
 	for ( b = selected_brushes->next; b != NULL && b != selected_brushes; b = b->next )
 	{
 		if ( b->patchBrush && !strcmp( b->pPatch->pShader->getShaderFileName(), name ) ) {
 			SetShader( b->pPatch );
 		}
 		else{
-			for ( f = b->brush_faces; f; f = f->next )
+			for ( f = b->brush_faces; f; f = f->next ) {
 				if ( !strcmp( f->pShader->getShaderFileName(), name ) ) {
 					SetShader( f );
 				}
 		}
 	}
+	}
+
 	// do that to the filtered brushes as well (we might have some region compiling going on)
 	for ( b = filtered_brushes->next; b != NULL && b != filtered_brushes; b = b->next )
 	{
@@ -937,12 +1137,14 @@ void WINAPI QERApp_ReloadShaderFile( const char *name ){
 			SetShader( b->pPatch );
 		}
 		else{
-			for ( f = b->brush_faces; f; f = f->next )
+			for ( f = b->brush_faces; f; f = f->next ) {
 				if ( !strcmp( f->pShader->getShaderFileName(), name ) ) {
 					SetShader( f );
 				}
 		}
 	}
+	}
+
 	// call Texture_ShowInUse to clean and display only what's required
 	g_ShadersTable.m_pfnTexture_ShowInuse();
 	QERApp_SortActiveShaders();
@@ -952,15 +1154,17 @@ void WINAPI QERApp_ReloadShaderFile( const char *name ){
 void CShaderArray::SetDisplayed( bool b ){
 	int i, count;
 	count = CPtrArray::GetSize();
-	for ( i = 0; i < count; i++ )
+	for ( i = 0; i < count; i++ ) {
 		static_cast < IShader * >( CPtrArray::GetAt( i ) )->SetDisplayed( b );
+}
 }
 
 void CShaderArray::SetInUse( bool b ){
 	int i, count;
 	count = CPtrArray::GetSize();
-	for ( i = 0; i < count; i++ )
+	for ( i = 0; i < count; i++ ) {
 		static_cast < IShader * >( CPtrArray::GetAt( i ) )->SetInUse( b );
+}
 }
 
 // Set the IsDisplayed flag on all active shaders

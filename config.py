@@ -14,6 +14,7 @@ if __name__ != '__main__':
     from SCons.Script import *
 
 import utils
+import dependencies
 
 GTK_PREFIX='gtk-2.24.10'
 GTK64_PREFIX='gtk-2.22.1_win64'
@@ -53,6 +54,7 @@ class Config:
                         'UnvanquishedPack',
                         'Q1Pack',
                         'Q2RePack',
+                        'SCGhostPack',
         ]
 
     def __repr__( self ):
@@ -107,7 +109,7 @@ class Config:
 
             # PIC versions of the libs for the modules
             shlib_objects_extra = {}
-            for project in [ 'libs/synapse/synapse.vcxproj', 'libs/mathlib/mathlib.vcxproj', 'libs/picomodel/picomodel.vcxproj', 'libs/cmdlib/cmdlib.vcxproj', 'libs/splines/splines.vcxproj' ]:
+            for project in [ 'libs/synapse/synapse.vcxproj', 'libs/mathlib/mathlib.vcxproj', 'libs/picomodel/picomodel.vcxproj', 'libs/cmdlib/cmdlib.vcxproj', 'libs/splines/splines.vcxproj', 'libs/ddslib/ddslib.vcxproj' ]:
                 ( libpath, libname ) = os.path.split( project )
                 libname = os.path.splitext( libname )[0]
                 config['shared'] = True
@@ -152,6 +154,8 @@ class Config:
                     shlib_objects += shlib_objects_extra['splines']
                 elif ( libname == 'entity' ):
                     shlib_objects += shlib_objects_extra['mathlib']
+                elif ( libname == 'image' ):
+                    shlib_objects += shlib_objects_extra['ddslib']
                 elif ( libname == 'map' ):
                     shlib_objects += shlib_objects_extra['cmdlib']
                 elif ( libname == 'model' ):
@@ -306,6 +310,10 @@ class Config:
     def FetchGamePaks( self, path ):
         for pak in self.setup_packs:
             pak_path = os.path.join( path, 'installs', pak )
+            if pak == 'SCGhostPack':
+                source = os.path.join( os.path.dirname( os.path.abspath( __file__ ) ), 'gamepacks', pak )
+                shutil.copytree( source, pak_path, dirs_exist_ok=True )
+                continue
             if pak == 'Q2RePack':
                 self.GitCloneOrUpdate( 'https://github.com/TTimo/Q2RePack.git', pak_path )
                 continue
@@ -330,13 +338,15 @@ class Config:
                 shutil.copy( os.path.join( root, file ), os.path.join( target_dir, file ) )
 
     def Setup( self ):
+        env = Environment()
+        if not env.GetOption('clean'):
+            dependencies.fetch()
         try:
             self.setup_platforms.index( 'local' )
         except:
             pass
         else:
             # special case, fetch external paks under the local install directory
-            env = Environment()
             if not env.GetOption('clean') and not env.GetOption('no_packs'):
                 self.FetchGamePaks( self.install_directory )
         # NOTE: unrelated to self.setup_platforms - grab support files and binaries and install them
@@ -376,6 +386,8 @@ class Config:
             # copy all the dependent runtime data to the install directory
             srcdir = os.path.dirname( backup_cwd )
             for dll in [
+                '%s/bin/gspawn-win32-helper.exe' % GTK_PREFIX,
+                '%s/bin/gspawn-win32-helper-console.exe' % GTK_PREFIX,
                 '%s/bin/freetype6.dll' % GTK_PREFIX,
                 '%s/bin/intl.dll' % GTK_PREFIX,
                 '%s/bin/libasprintf-0.dll' % GTK_PREFIX,
@@ -420,6 +432,8 @@ class Config:
             except:
                 pass # assume 'already exists'
             for x64_dll in [
+                '%s/bin/gspawn-win64-helper.exe' % GTK64_PREFIX,
+                '%s/bin/gspawn-win64-helper-console.exe' % GTK64_PREFIX,
                 '%s/bin/libpng14-14.dll' % GTK64_PREFIX,
                 '%s/bin/libglib-2.0-0.dll' % GTK64_PREFIX,
                 '%s/bin/libintl-8.dll' % GTK64_PREFIX,

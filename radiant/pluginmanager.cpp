@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: pluginmanager.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -89,6 +115,7 @@ virtual ~RadiantFileTypeRegistry() {}
 virtual void addType( const char* key, filetype_t type ){
 	m_typelists[key].push_back( type );
 }
+
 virtual void getTypeList( const char* key, IFileTypeList* typelist ){
 	filetype_list_t& list_ref = m_typelists[key];
 
@@ -113,6 +140,7 @@ virtual void getTypeList( const char* key, IFileTypeList* typelist ){
 		typelist->addType( list_ref[i].getType() );
 	}
 }
+
 private:
 struct filetype_copy_t
 {
@@ -122,6 +150,7 @@ struct filetype_copy_t
 	inline filetype_t getType() const {
 		return filetype_t( m_name.c_str(), m_pattern.c_str() );
 	}
+
 private:
 	string_t m_name;
 	string_t m_pattern;
@@ -167,23 +196,48 @@ public:
 CRadiantModelModuleManager(){
 	SetMatchAPI( MODEL_MAJOR, "*" );
 }
+
 virtual ~CRadiantModelModuleManager(){
 	APIDescriptorList::iterator i;
 	for ( i = mAPIs.begin(); i != mAPIs.end(); i++ )
 	{
-		delete (_QERPlugModelTable*)( *i )->mpTable;
-		delete *i;
+		if ( strcmp( ( *i )->major_name, NOD_MODEL_MAJOR ) == 0 ) {
+				delete static_cast<_QERNodModelTable *>( ( *i )->mpTable );
+			} else {
+				delete (_QERPlugModelTable*)( *i )->mpTable;
+			}
+
+			delete *i;
 		*i = NULL;
 	}
+
 	mAPIs.clear();
 }
 
 // CSynapseAPIManager interface -------------------
+bool MatchAPI( const char *major, const char *minor ){
+	if ( strcmp( major, NOD_MODEL_MAJOR ) == 0 ) {
+			return g_pGameDescription && g_pGameDescription->mGameFile == SCGHOST_GAME &&
+			strcmp( minor, NOD_MODEL_VERSION ) == 0;
+		}
+
+		return CSynapseAPIManager::MatchAPI( major, minor );
+}
+
 APIDescriptor_t* BuildRequireAPI( APIDescriptor_t* pAPI ){
 	APIDescriptor_t* pRequireAPI = CSynapseAPIManager::PrepareRequireAPI( pAPI );
-	pRequireAPI->mpTable = new _QERPlugModelTable;
-	( (_QERPlugModelTable*)pRequireAPI->mpTable )->m_nSize = sizeof( _QERPlugModelTable );
-	pRequireAPI->mSize = sizeof( _QERPlugModelTable );
+	if ( strcmp( pAPI->major_name, NOD_MODEL_MAJOR ) == 0 ) {
+		_QERNodModelTable *table = new _QERNodModelTable();
+		table->m_nSize = sizeof( _QERNodModelTable );
+		pRequireAPI->mpTable = table;
+		pRequireAPI->mSize = sizeof( _QERNodModelTable );
+	}
+	else {
+		pRequireAPI->mpTable = new _QERPlugModelTable;
+		( (_QERPlugModelTable*)pRequireAPI->mpTable )->m_nSize = sizeof( _QERPlugModelTable );
+		pRequireAPI->mSize = sizeof( _QERPlugModelTable );
+	}
+
 	mAPIs.push_front( pRequireAPI );
 	return pRequireAPI;
 }
@@ -191,15 +245,32 @@ APIDescriptor_t* BuildRequireAPI( APIDescriptor_t* pAPI ){
 // Model Manager specific
 const _QERPlugModelTable* GetModelTable( const char* version ){
 	APIDescriptorList::iterator i;
-	for ( i = mAPIs.begin(); i != mAPIs.end(); i++ )
-		if ( strcmp( version, ( *i )->minor_name ) == 0 ) {
+	for ( i = mAPIs.begin(); i != mAPIs.end(); i++ ) {
+			if ( strcmp( ( *i )->major_name, MODEL_MAJOR ) == 0 && strcmp( version, ( *i )->minor_name ) == 0 ) {
 			return ( (_QERPlugModelTable*)( *i )->mpTable );
 		}
-	return NULL;
+		}
+
+		return NULL;
+}
+
+const _QERNodModelTable *GetNodResources(){
+	for ( APIDescriptor_t *api : mAPIs ) {
+			if ( strcmp( api->major_name, NOD_MODEL_MAJOR ) == 0 ) {
+			const _QERNodModelTable *table = static_cast<const _QERNodModelTable *>( api->mpTable );
+			if ( table->m_pfnCatalog && table->m_pfnCheck ) {
+					return table;
+		}
+			}
+		}
+
+		return NULL;
 }
 };
 
 CRadiantModelModuleManager g_ModelManager;
+
+const _QERNodModelTable *NodModel_Resources(){ return g_ModelManager.GetNodResources(); }
 
 /*! One of these exists for each unique model ID in use */
 class CModelWrapper
@@ -210,18 +281,22 @@ CModelWrapper ( const char *id, const char* version ) : refcount( 1 ){
 	copy( id, version );
 	construct();
 }
+
 void Refresh(){
 	destroy();
 	construct();
 }
+
 ~CModelWrapper (){
 	destroy();
 }
+
 private:
 void copy( const char* id, const char* version ){
 	m_id = id;
 	m_version = version;
 }
+
 void construct(){
 	m_model.pRender = NULL;
 	m_model.pSelect = NULL;
@@ -233,17 +308,21 @@ void construct(){
 		pTable->m_pfnLoadModel( &m_model, m_id.c_str() );
 	}
 }
+
 void destroy(){
 	if ( m_model.pRender ) {
 		m_model.pRender->DecRef();
 	}
+
 	if ( m_model.pSelect ) {
 		m_model.pSelect->DecRef();
 	}
+
 	if ( m_model.pEdit ) {
 		m_model.pEdit->DecRef();
 	}
 }
+
 string_t m_id;
 string_t m_version;
 entity_interfaces_t m_model;
@@ -259,6 +338,7 @@ class CModelManager : public IModelCache
 	CModelManager(){
 		m_ptrs = g_ptr_array_new();
 	}
+
 	virtual ~CModelManager(){
 		g_ptr_array_free( m_ptrs, FALSE );
 	}
@@ -276,6 +356,7 @@ class CModelManager : public IModelCache
 					g_ptr_array_remove_index_fast(m_ptrs, i);
 					delete elem;
 				}
+
 				return;
 			}
 		}
@@ -301,10 +382,12 @@ class CModelManager : public IModelCache
 	}
 
 	virtual void RefreshAll(){
-		for ( unsigned int i = 0; i < m_ptrs->len; ++i )
+		for ( unsigned int i = 0; i < m_ptrs->len; ++i ) {
 			( (CModelWrapper*)m_ptrs->pdata[i] )->Refresh();
 	}
-	private:
+	}
+
+  private:
 	GPtrArray *m_ptrs;   // array of CModelWrapper*
 };
 
@@ -324,6 +407,7 @@ public:
 CRadiantToolbarModuleManager(){
 	SetMatchAPI( TOOLBAR_MAJOR, "*" );
 }
+
 virtual ~CRadiantToolbarModuleManager(){
 	APIDescriptorList::iterator i;
 	for ( i = mAPIs.begin(); i != mAPIs.end(); i++ )
@@ -332,6 +416,7 @@ virtual ~CRadiantToolbarModuleManager(){
 		delete *i;
 		*i = NULL;
 	}
+
 	mAPIs.clear();
 }
 
@@ -348,11 +433,12 @@ APIDescriptor_t* BuildRequireAPI( APIDescriptor_t* pAPI ){
 // Toolbar Manager specific
 void ConstructToolbar(){
 	APIDescriptorList::iterator i;
-	for ( i = mAPIs.begin(); i != mAPIs.end(); i++ )
-		AddItem( (_QERPlugToolbarTable*)( *i )->mpTable );
+	for ( i = mAPIs.begin(); i != mAPIs.end(); i++ ) {
+			AddItem( (_QERPlugToolbarTable*)( *i )->mpTable );
 }
+	}
 
-private:
+  private:
 
 void AddItem( _QERPlugToolbarTable* pTable ){
 	const unsigned int count = pTable->m_pfnToolbarButtonCount();
@@ -422,6 +508,7 @@ void CRadiantImageManager::LoadImage( const char *name, byte **pic, int *width, 
 				return; // this was the right extension, we loaded
 			}
 		}
+
 		return;
 	}
 
@@ -435,6 +522,7 @@ void CRadiantImageManager::LoadImage( const char *name, byte **pic, int *width, 
 			return;
 		}
 	}
+
 	Sys_FPrintf( SYS_WRN, "WARNING: no image table for extension '%s'\n", ext );
 }
 
@@ -448,6 +536,7 @@ const char* CRadiantImageManager::GetNextExtension(){
 		mExtScanSlot++;
 		return ext;
 	}
+
 	return NULL;
 }
 
@@ -517,14 +606,16 @@ void CPluginSlot::Init(){
 	strcpy( cTemp, str );
 	char* token = strtok( cTemp, ",;" );
 	if ( token && *token == ' ' ) {
-		while ( *token == ' ' )
+		while ( *token == ' ' ) {
 			token++;
+	}
 	}
 	while ( token != NULL )
 	{
 		m_CommandStrings = g_slist_append( m_CommandStrings, strdup( token ) );
 		token = strtok( NULL, ",;" );
 	}
+
 	mpTable->m_pfnQERPlug_Init( NULL, (void*)g_pParentWnd->m_pWidget );
 	m_bReady = true;
 }
@@ -537,6 +628,7 @@ int CPluginSlot::getCommandCount(){
 	if ( !m_bReady ) {
 		Init();
 	}
+
 	return g_slist_length( m_CommandStrings );
 }
 
@@ -544,6 +636,7 @@ const char* CPluginSlot::getCommand( int n ){
 	if ( !m_bReady ) {
 		Init();
 	}
+
 	return (char*)g_slist_nth_data( m_CommandStrings, n );
 }
 
@@ -560,6 +653,7 @@ bool CPluginSlot::ownsCommandID( int n ){
 			return true;
 		}
 	}
+
 	return false;
 }
 
@@ -573,6 +667,7 @@ void CPluginSlot::Dispatch( const char *p ){
 	{
 		Select_GetBounds( vMin, vMax );
 	}
+
 	mpTable->m_pfnQERPlug_Dispatch( p, vMin, vMax, QE_SingleBrush( true ) );
 }
 
@@ -595,6 +690,7 @@ bool CRadiantPluginManager::Dispatch( int n, const char* p ){
 			return true;
 		}
 	}
+
 	return false;
 }
 
@@ -685,6 +781,7 @@ void CPlugInManager::Init(){
 		Syn_Printf( "GetConfigForAPI '%s' failed - invalid XML config file?\n", IMAGE_MAJOR );
 		Error( "Synapse server initialization failed (see console)\n" );
 	}
+
 	g_ImageManager.SetMatchAPI( IMAGE_MAJOR, minor );
 	g_pParentWnd->GetSynapseClient().AddManager( &g_ImageManager );
 
@@ -703,6 +800,7 @@ void CPlugInManager::Init(){
 	if ( !g_pParentWnd->GetSynapseServer().Resolve( &g_pParentWnd->GetSynapseClient() ) ) {
 		Error( "synapse initialization fail (see console)" );
 	}
+
 	g_PluginsManager.PopulateMenu();
 	g_ToolbarModuleManager.ConstructToolbar();
 	InitFileTypes();
@@ -720,6 +818,7 @@ void CPlugInManager::Cleanup(){
 		brush_t *pb = reinterpret_cast<brush_t*>( m_BrushHandles.GetAt( i ) );
 		Brush_Free( pb );
 	}
+
 	m_BrushHandles.RemoveAll();
 
 	for ( i = 0; i < m_EntityHandles.GetSize(); i++ )
@@ -727,6 +826,7 @@ void CPlugInManager::Cleanup(){
 		entity_t *pe = reinterpret_cast<entity_t*>( m_EntityHandles.GetAt( i ) );
 		Entity_Free( pe );
 	}
+
 	m_EntityHandles.RemoveAll();
 
 	// patches
@@ -810,6 +910,7 @@ void CPlugInManager::DeleteBrushHandle( void * vp ){
 					// throughout a session (i.e. between an allocate and release)
 					pHandles[j]->RemoveAt( i );
 				}
+
 				Brush_Free( pb );
 				Sys_MarkMapModified(); // PGM
 				return;
@@ -831,6 +932,7 @@ void CPlugInManager::CommitBrushHandleToMap( void * vp ){
 			Select_Brush( pb );
 		}
 	}
+
 	g_bScreenUpdates = true;
 	Sys_UpdateWindows( W_ALL );
 }
@@ -867,6 +969,7 @@ brush_t* CPlugInManager::FindBrushHandle( void * vp ){
 			}
 		}
 	}
+
 	return NULL;
 }
 
@@ -893,6 +996,7 @@ patchMesh_t* CPlugInManager::FindPatchHandle( int index ){
 #endif
 		break;
 	}
+
 	return NULL;
 }
 
@@ -964,8 +1068,9 @@ void WINAPI QERApp_GetPoints( int nMax, _QERPointData *pData, char* pMsg ){
 //  g_nPlugCount=nMax-1;
 	AcquirePath( nMax, &_PlugDone );
 
-	while ( g_bPlugWait )
+	while ( g_bPlugWait ) {
 		gtk_main_iteration();
+	}
 
 	HideInfoDialog();
 
@@ -1060,6 +1165,7 @@ void WINAPI QERApp_AddFaceData( void* pv, _QERFaceData *pData ){
 #endif
 			}
 		}
+
 		Sys_MarkMapModified(); // PGM
 	}
 }
@@ -1073,6 +1179,7 @@ int WINAPI QERApp_GetFaceCount( void* pv ){
 			n++;
 		}
 	}
+
 	return n;
 }
 
@@ -1109,15 +1216,18 @@ _QERFaceData* WINAPI QERApp_GetFaceData( void* pv, int nFaceIndex ){
 					face.m_fShift[0] = f->texdef.shift[0];
 					face.m_fShift[1] = f->texdef.shift[1];
 				}
+
 				strcpy( face.m_TextureName, f->texdef.GetName() );
 				VectorCopy( f->planepts[0], face.m_v1 );
 				VectorCopy( f->planepts[1], face.m_v2 );
 				VectorCopy( f->planepts[2], face.m_v3 );
 				return &face;
 			}
+
 			n++;
 		}
 	}
+
 	return NULL;
 }
 
@@ -1145,6 +1255,7 @@ void WINAPI QERApp_SetFaceData( void* pv, int nFaceIndex, _QERFaceData *pData ){
 				Sys_MarkMapModified(); // PGM
 				return;   // PGM
 			}
+
 			n++;
 		}
 	}
@@ -1163,6 +1274,7 @@ void WINAPI QERApp_DeleteFace( void* pv, int nFaceIndex ){
 				Sys_MarkMapModified(); // PGM
 				return;
 			}
+
 			n++;
 			pPrev = f;
 		}
@@ -1210,6 +1322,7 @@ void WINAPI QERApp_DeselectAllBrushes(){
 	Select_Deselect();
 	Sys_UpdateWindows( W_ALL );
 }
+
 //PGM
 //==========
 
@@ -1221,6 +1334,7 @@ void WINAPI QERApp_TextureBrush( void* pv, char* pName ){
 			//strcpy(f->texdef.name, pName);
 			f->texdef.SetName( pName );
 		}
+
 		Sys_MarkMapModified(); // PGM
 	}
 }
@@ -1231,6 +1345,7 @@ int WINAPI QERApp_SelectedBrushCount(){
 	{
 		n++;
 	}
+
 	return n;
 }
 
@@ -1240,6 +1355,7 @@ int WINAPI QERApp_ActiveBrushCount(){
 	{
 		n++;
 	}
+
 	return n;
 }
 
@@ -1250,6 +1366,7 @@ int WINAPI QERApp_AllocateSelectedBrushHandles(){
 		n++;
 		g_pParentWnd->GetPlugInMgr().GetSelectedHandles().Add( pb );
 	}
+
 	return n;
 }
 
@@ -1260,6 +1377,7 @@ int WINAPI QERApp_AllocateActiveBrushHandles(){
 		n++;
 		g_pParentWnd->GetPlugInMgr().GetActiveHandles().Add( pb );
 	}
+
 	return n;
 }
 
@@ -1277,6 +1395,7 @@ void* WINAPI QERApp_GetActiveBrushHandle( int nIndex ){
 	if ( nIndex < g_pParentWnd->GetPlugInMgr().GetActiveHandles().GetSize() ) {
 		return reinterpret_cast<void*>( g_pParentWnd->GetPlugInMgr().GetActiveHandles().GetAt( nIndex ) );
 	}
+
 	return NULL;
 }
 
@@ -1284,6 +1403,7 @@ void* WINAPI QERApp_GetSelectedBrushHandle( int nIndex ){
 	if ( nIndex < g_pParentWnd->GetPlugInMgr().GetSelectedHandles().GetSize() ) {
 		return reinterpret_cast<void*>( g_pParentWnd->GetPlugInMgr().GetSelectedHandles().GetAt( nIndex ) );
 	}
+
 	return NULL;
 }
 
@@ -1298,8 +1418,10 @@ int WINAPI QERApp_TextureCount(){
 		if ( !pShader ) {
 			break;
 		}
+
 		n++;
 	}
+
 	return n;
 }
 
@@ -1316,12 +1438,15 @@ char* WINAPI QERApp_GetTexture( int nIndex ){
 		if ( !pShader ) {
 			break;
 		}
+
 		if ( n == nIndex ) {
 			strcpy( name, pShader->getName() );
 			return name;
 		}
+
 		n++;
 	}
+
 	return NULL;
 }
 
@@ -1348,6 +1473,7 @@ int WINAPI QERApp_GetEClassCount(){
 	{
 		n++;
 	}
+
 	return n;
 }
 
@@ -1359,6 +1485,7 @@ char* WINAPI QERApp_GetEClass( int nIndex ){
 			return e->name;
 		}
 	}
+
 	return NULL;
 }
 
@@ -1372,6 +1499,7 @@ int WINAPI QERApp_GetEntityCount(){
 	{
 		n++;
 	}
+
 	return n;
 }
 
@@ -1381,6 +1509,7 @@ void* WINAPI QERApp_GetEntityHandle( int nIndex ){
 		// looks for the worldspawn
 		return static_cast<void*>( world_entity );
 	}
+
 	entity_t *pe = &entities;
 	int n = 0;
 	while ( n < nIndex )
@@ -1388,6 +1517,7 @@ void* WINAPI QERApp_GetEntityHandle( int nIndex ){
 		pe = pe->next;
 		n++;
 	}
+
 	return static_cast<void*>( pe );
 }
 
@@ -1423,12 +1553,14 @@ int WINAPI QERApp_AllocateEntityBrushHandles( void* vp ){
 	if ( !pe->brushes.onext ) {
 		return 0;
 	}
+
 	g_pParentWnd->GetPlugInMgr().GetEntityBrushHandles().RemoveAll();
 	for ( brush_t *pb = pe->brushes.onext ; pb != &pe->brushes ; pb = pb->onext )
 	{
 		n++;
 		g_pParentWnd->GetPlugInMgr().GetEntityBrushHandles().Add( pb );
 	}
+
 	return n;
 }
 
@@ -1440,6 +1572,7 @@ void* WINAPI QERApp_GetEntityBrushHandle( int nIndex ){
 	if ( nIndex < g_pParentWnd->GetPlugInMgr().GetEntityBrushHandles().GetSize() ) {
 		return g_pParentWnd->GetPlugInMgr().GetEntityBrushHandles().GetAt( nIndex );
 	}
+
 	return NULL;
 }
 
@@ -1473,6 +1606,7 @@ int WINAPI QERApp_ScanFileForEClass( char *filename ){
 		eclass_e->nShowFlags |= ECLASS_PLUGINENTITY;
 		return 1;
 	}
+
 	return 0;
 }
 #endif // USEPLUGINENTITIES
@@ -1493,6 +1627,7 @@ void CPlugInManager::CommitBrushHandleToEntity( void* vpBrush, void* vpEntity ){
 			Entity_LinkBrush( pe, pb );
 		}
 	}
+
 	Sys_UpdateWindows( W_ALL );
 }
 
@@ -1563,6 +1698,7 @@ void CPlugInManager::CommitEntityHandleToMap( void* vpEntity ){
 			else{
 				has_brushes = true;
 			}
+
 			e = Eclass_ForName( ValueForKey( pe, "classname" ), has_brushes );
 			pe->eclass = e;
 			// fixedsize
@@ -1570,6 +1706,7 @@ void CPlugInManager::CommitEntityHandleToMap( void* vpEntity ){
 				if ( pe->brushes.onext != &pe->brushes ) {
 					Sys_FPrintf( SYS_WRN, "Warning : Fixed size entity with brushes in CPlugInManager::CommitEntityHandleToMap\n" );
 				}
+
 				// create a custom brush
 				VectorAdd( e->mins, pe->origin, mins );
 				VectorAdd( e->maxs, pe->origin, maxs );
@@ -1629,6 +1766,7 @@ void CPlugInManager::CommitEntityHandleToMap( void* vpEntity ){
 					// we are using old brushes
 					Brush_Build( b );
 				}
+
 				b->next = active_brushes.next;
 				active_brushes.next->prev = b;
 				b->prev = &active_brushes;
@@ -1737,6 +1875,7 @@ int CPlugInManager::AllocateActivePatchHandles(){
 			m_PatchesHandles.Add( pb );
 		}
 	}
+
 	return n;
 }
 
@@ -1755,6 +1894,7 @@ int CPlugInManager::AllocateSelectedPatchHandles(){
 			m_PatchesHandles.Add( pb );
 		}
 	}
+
 	return n;
 }
 
@@ -1769,6 +1909,7 @@ patchMesh_t* WINAPI QERApp_GetPatchData( int index ){
 		memcpy( &patch, pPatch, sizeof( patchMesh_t ) );
 		return &patch;
 	}
+
 	return NULL;
 }
 
@@ -1834,6 +1975,7 @@ void CPlugInManager::CommitPatchHandleToMap( int index, patchMesh_t *pMesh, char
 		else{
 			pPatch->pShader = QERApp_Shader_ForName( g_qeglobals.d_texturewin.texdef.GetName() );
 		}
+
 		pPatch->d_texture = pPatch->pShader->getTexture();
 		pPatch->pShader->IncRef();
 		g_bScreenUpdates = false;
@@ -1871,6 +2013,7 @@ void CPlugInManager::CommitPatchHandleToEntity( int index, patchMesh_t *pMesh, c
 		else{
 			pPatch->pShader = QERApp_Shader_ForName( g_qeglobals.d_texturewin.texdef.GetName() );
 		}
+
 		pPatch->d_texture = pPatch->pShader->getTexture();
 		pPatch->pShader->IncRef();
 		g_bScreenUpdates = false;
@@ -1911,6 +2054,7 @@ XVisualInfo* QEX_ChooseVisual( bool zbuffer ){
 	if ( dpy == NULL ) {
 		Error( "OpenGL fatal error: Cannot get display.\n" );
 	}
+
 	vi = qglXChooseVisual( dpy, DefaultScreen( dpy ), zbuffer ? attrlist_z : attrlist );
 	if ( vi == NULL ) {
 		Error( "OpenGL fatal error: glXChooseVisual failed.\n" );
@@ -1979,6 +2123,7 @@ unsigned long QERApp_GetTickCount(){
 	if ( !basetime ) {
 		basetime = tp.tv_sec;
 	}
+
 	return ( tp.tv_sec - basetime ) + tp.tv_usec / 1000;
 #endif
 }
@@ -2090,6 +2235,7 @@ bool CSynapseClientRadiant::RequestAPI( APIDescriptor_t *pAPI ){
 
 		return true;
 	}
+
 	if ( !strcmp( pAPI->major_name, SCRIPLIB_MAJOR ) ) {
 		_QERScripLibTable *pScripLibTable = static_cast<_QERScripLibTable *>( pAPI->mpTable );
 		pScripLibTable->m_pfnGetToken = &GetToken;
@@ -2104,6 +2250,7 @@ bool CSynapseClientRadiant::RequestAPI( APIDescriptor_t *pAPI ){
 
 		return true;
 	}
+
 	if ( !strcmp( pAPI->major_name, BRUSH_MAJOR ) ) {
 		_QERBrushTable *pBrushTable = static_cast<_QERBrushTable *>( pAPI->mpTable );
 		pBrushTable->m_pfnBP_MessageBox = &BP_MessageBox;
@@ -2118,6 +2265,7 @@ bool CSynapseClientRadiant::RequestAPI( APIDescriptor_t *pAPI ){
 
 		return true;
 	}
+
 	if ( !strcmp( pAPI->major_name, APPSHADERS_MAJOR ) ) {
 		_QERAppShadersTable *pShadersTable = static_cast<_QERAppShadersTable*>( pAPI->mpTable );
 		pShadersTable->m_pfnQTextures = QERApp_QTextures;
@@ -2130,6 +2278,7 @@ bool CSynapseClientRadiant::RequestAPI( APIDescriptor_t *pAPI ){
 
 		return true;
 	}
+
 	if ( !strcmp( pAPI->major_name, QGL_MAJOR ) ) {
 		_QERQglTable *pQglTable = static_cast<_QERQglTable *>( pAPI->mpTable );
 		pQglTable->m_pfn_qglAlphaFunc = qglAlphaFunc;
@@ -2225,6 +2374,7 @@ bool CSynapseClientRadiant::RequestAPI( APIDescriptor_t *pAPI ){
 
 		return true;
 	}
+
 	if ( !strcmp( pAPI->major_name, DATA_MAJOR ) ) {
 		_QERAppDataTable *pDataTable = static_cast<_QERAppDataTable *>( pAPI->mpTable );
 		pDataTable->m_pfnActiveBrushes = QERApp_ActiveBrushes;
@@ -2234,6 +2384,7 @@ bool CSynapseClientRadiant::RequestAPI( APIDescriptor_t *pAPI ){
 
 		return true;
 	}
+
 	if ( !strcmp( pAPI->major_name, PATCH_MAJOR ) ) {
 		_QERPatchTable *pPatchTable = static_cast<_QERPatchTable *>( pAPI->mpTable );
 		pPatchTable->m_pfnPatch_Alloc = &Patch_Alloc;
@@ -2242,6 +2393,7 @@ bool CSynapseClientRadiant::RequestAPI( APIDescriptor_t *pAPI ){
 
 		return true;
 	}
+
 	if ( !strcmp( pAPI->major_name, ECLASSMANAGER_MAJOR ) ) {
 		_EClassManagerTable *pEClassManTable = static_cast<_EClassManagerTable *>( pAPI->mpTable );
 
@@ -2254,6 +2406,7 @@ bool CSynapseClientRadiant::RequestAPI( APIDescriptor_t *pAPI ){
 
 		return true;
 	}
+
 	if ( !strcmp( pAPI->major_name, SELECTEDFACE_MAJOR ) ) {
 		_QERSelectedFaceTable *pSelectedFaceTable = static_cast<_QERSelectedFaceTable *>( pAPI->mpTable );
 
@@ -2267,6 +2420,7 @@ bool CSynapseClientRadiant::RequestAPI( APIDescriptor_t *pAPI ){
 		pSelectedFaceTable->m_pfnSelect_SetTexture = &Select_SetTexture;
 		return true;
 	}
+
 	if ( !strcmp( pAPI->major_name, APPSURFACEDIALOG_MAJOR ) ) {
 		_QERAppSurfaceTable *pSurfDialogTable = static_cast<_QERAppSurfaceTable *>( pAPI->mpTable );
 		pSurfDialogTable->m_pfnOnlyPatchesSelected = &OnlyPatchesSelected;
@@ -2298,6 +2452,7 @@ bool CSynapseClientRadiant::RequestAPI( APIDescriptor_t *pAPI ){
 
 		return true;
 	}
+
 	if ( !strcmp( pAPI->major_name, UNDO_MAJOR ) ) {
 		_QERUndoTable *pUndoTable = static_cast<_QERUndoTable *>( pAPI->mpTable );
 
@@ -2317,6 +2472,7 @@ bool CSynapseClientRadiant::RequestAPI( APIDescriptor_t *pAPI ){
 
 		return true;
 	}
+
 	if ( !strcmp( pAPI->major_name, CAMERA_MAJOR ) ) {
 		_QERCameraTable *pCameraTable = static_cast<_QERCameraTable *>( pAPI->mpTable );
 
@@ -2326,6 +2482,7 @@ bool CSynapseClientRadiant::RequestAPI( APIDescriptor_t *pAPI ){
 
 		return true;
 	}
+
 	if ( !strcmp( pAPI->major_name, UI_MAJOR ) ) {
 		_QERUITable *pUITable = static_cast<_QERUITable *>( pAPI->mpTable );
 
@@ -2338,6 +2495,7 @@ bool CSynapseClientRadiant::RequestAPI( APIDescriptor_t *pAPI ){
 
 		return true;
 	}
+
 	if ( !strcmp( pAPI->major_name, UIGTK_MAJOR ) ) {
 		_QERUIGtkTable *pUIGtkTable = static_cast<_QERUIGtkTable *>( pAPI->mpTable );
 

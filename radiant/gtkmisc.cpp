@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: gtkmisc.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (c) 2001, Loki software, inc.
    All rights reserved.
 
@@ -55,6 +81,7 @@
 #define R_OK 04
 #endif
 #include "stdafx.h"
+#include "nodproject.h"
 
 // =============================================================================
 // Misc stuff
@@ -202,6 +229,7 @@ unsigned char *load_bitmap_file( const char* filename, guint16 *width, guint16 *
 		fclose( fp );
 		return NULL;
 	}
+
 	m_bytesRead++;
 
 	rc = fread( &m2, 1, 1, fp );
@@ -209,6 +237,7 @@ unsigned char *load_bitmap_file( const char* filename, guint16 *width, guint16 *
 		fclose( fp );
 		return NULL;
 	}
+
 	m_bytesRead++;
 
 	if ( ( m1 != 'B' ) || ( m2 != 'M' ) ) {
@@ -393,6 +422,7 @@ unsigned char *load_bitmap_file( const char* filename, guint16 *width, guint16 *
 							*( outbuf + rowOffset + offset + 2 ) = pixel[0]; // b
 						}
 					}
+
 					m_bytesRead += row_size;
 
 					// read DWORD padding
@@ -404,6 +434,7 @@ unsigned char *load_bitmap_file( const char* filename, guint16 *width, guint16 *
 							fclose( fp );
 							return NULL;
 						}
+
 						m_bytesRead++;
 					}
 				}
@@ -427,6 +458,7 @@ unsigned char *load_bitmap_file( const char* filename, guint16 *width, guint16 *
 								fclose( fp );
 								return NULL;
 							}
+
 							m_bytesRead++;
 						}
 
@@ -450,9 +482,11 @@ unsigned char *load_bitmap_file( const char* filename, guint16 *width, guint16 *
 							if ( colormap ) {
 								delete [] colormap;
 							}
+
 							fclose( fp );
 							return NULL;
 						}
+
 						m_bytesRead++;
 					}
 				}
@@ -558,6 +592,7 @@ unsigned char *load_bitmap_file( const char* filename, guint16 *width, guint16 *
 								if ( ( i & 1 ) == 0 ) {
 									c1 = getc( fp );
 								}
+
 								*pp = colormap[( i & 1 ) ? ( c1 & 0x0f ) : ( ( c1 >> 4 ) & 0x0f )].rgbRed; pp++;
 								*pp = colormap[( i & 1 ) ? ( c1 & 0x0f ) : ( ( c1 >> 4 ) & 0x0f )].rgbGreen; pp++;
 								*pp = colormap[( i & 1 ) ? ( c1 & 0x0f ) : ( ( c1 >> 4 ) & 0x0f )].rgbBlue; pp++;
@@ -571,12 +606,14 @@ unsigned char *load_bitmap_file( const char* filename, guint16 *width, guint16 *
 				}
 			}
 		}
+
 		if ( colormap ) {
 			delete [] colormap;
 		}
 
 		fclose( fp );
 	}
+
 	return imagebits;
 }
 
@@ -602,6 +639,7 @@ void load_pixmap( const char* filename, GtkWidget **widget, GdkPixbuf **pixmap )
 		Sys_FPrintf( SYS_ERR, "ERROR: Failed to load_pixmap %s: %s, creating default pixmap.\n", str.GetBuffer(), gerror->message );
 		g_error_free( gerror );
 	}
+
 	*widget = gtk_image_new_from_pixbuf( *pixmap );
 	gtk_widget_show( *widget );
 	if ( *pixmap ) {
@@ -643,6 +681,7 @@ bool WINAPI load_plugin_bitmap( const char* filename, void **gdkpixmap, void **m
 			}
 		}
 	}
+
 	return true;
 }
 
@@ -668,6 +707,7 @@ GtkWidget* new_image_icon( const char* filename ) {
 		g_error_free( gerror );
 		icon = gtk_image_new_from_file( filename );
 	}
+
 	gtk_widget_show( icon );
 
 	return icon;
@@ -689,6 +729,7 @@ GtkWidget* new_plugin_image_icon( const char* filename ) {
 		Sys_FPrintf( SYS_ERR, "ERROR: Failed to load plugin bitmap: %s, %s\n", str.GetBuffer(), gerror->message );
 		g_error_free( gerror );
 	}
+
 	//manually add transparency to bmp files
 	if( strlen( filename ) > 4 && strcmp( filename + strlen( filename ) - 4, ".bmp" ) == 0 && pixbuf && !gdk_pixbuf_get_has_alpha( pixbuf ) ) {
 		GdkPixbuf *apixbuf;
@@ -696,11 +737,13 @@ GtkWidget* new_plugin_image_icon( const char* filename ) {
 		g_object_unref( pixbuf );
 		pixbuf = apixbuf;
 	}
+
 	icon = gtk_image_new_from_pixbuf( pixbuf );
 	gtk_widget_show( icon );
 	if( pixbuf ) {
 		g_object_unref( pixbuf );
 	}
+
 	return icon;
 }
 
@@ -776,6 +819,7 @@ GtkWidget* create_radio_menu_item_with_mnemonic( GtkWidget *menu, GtkWidget *las
 	if ( last != NULL ) {
 		group = gtk_radio_menu_item_get_group( GTK_RADIO_MENU_ITEM( last ) );
 	}
+
 	item = gtk_radio_menu_item_new_with_mnemonic( group, mnemonic );
 	gtk_check_menu_item_set_active( GTK_CHECK_MENU_ITEM( item ), state );
 
@@ -842,9 +886,10 @@ static GtkWidget * gtk_AddDlgButton( GtkWidget *container, const char *label,
 						G_CALLBACK( dialog_button_callback ), GINT_TO_POINTER( clickSignal ) );
 	gtk_widget_set_can_default( btn, TRUE );
 	
-	if( setGrabDefault ) 
+	if( setGrabDefault ) {
 		gtk_widget_grab_default( btn );
-	
+	}
+
 	gtk_widget_show( btn );
 
 	return btn;
@@ -892,14 +937,17 @@ int WINAPI gtk_MessageBoxNew( void *parent, const char *message,
 		dlg_icon = gtk_image_new_from_icon_name( "dialog-error", GTK_ICON_SIZE_DIALOG );
 		break;
 	}
+
 	case MB_ICONQUESTION: {
 		dlg_icon = gtk_image_new_from_icon_name( "dialog-question", GTK_ICON_SIZE_DIALOG );
 		break;
 	}
+
 	case MB_ICONEXCLAMATION: {
 		dlg_icon = gtk_image_new_from_icon_name( "dialog-warning", GTK_ICON_SIZE_DIALOG );
 		break;
 	}
+
 	case MB_ICONINFORMATION:
 	default: {
 		dlg_icon = gtk_image_new_from_icon_name( "dialog-information", GTK_ICON_SIZE_DIALOG );
@@ -948,6 +996,7 @@ int WINAPI gtk_MessageBoxNew( void *parent, const char *message,
 		ret = IDOK;
 		break;
 	}
+
 	case MB_OKCANCEL: {
 		GtkWidget *btn_ok = gtk_dialog_add_button( GTK_DIALOG( dialog ), _( "OK" ), GTK_RESPONSE_OK );
 		gtk_widget_add_accelerator( btn_ok, "clicked", accel, GDK_KEY_Return, (GdkModifierType)0, (GtkAccelFlags)0 );
@@ -956,10 +1005,12 @@ int WINAPI gtk_MessageBoxNew( void *parent, const char *message,
 		ret = IDCANCEL;
 		break;
 	}
+
 	case MB_ABORTRETRYIGNORE: {
 		//! @todo fill out
 		break;
 	}
+
 	case MB_YESNOCANCEL: {
 		//! @todo accelerators?
 		gtk_dialog_add_button( GTK_DIALOG( dialog ), _( "Yes" ), GTK_RESPONSE_YES );
@@ -968,6 +1019,7 @@ int WINAPI gtk_MessageBoxNew( void *parent, const char *message,
 		ret = IDCANCEL;
 		break;
 	}
+
 	case MB_YESNO: {
 		//! @todo accelerators?
 		gtk_dialog_add_button( GTK_DIALOG( dialog ), _( "Yes" ), GTK_RESPONSE_YES );
@@ -975,6 +1027,7 @@ int WINAPI gtk_MessageBoxNew( void *parent, const char *message,
 		ret = IDNO;
 		break;
 	}
+
 	case MB_RETRYCANCEL: {
 		//! @todo fill out
 		break;
@@ -1154,6 +1207,7 @@ struct filetype_copy_t
 		m_name = other.name;
 		m_pattern = other.pattern;
 	}
+
 	string_t m_name;
 	string_t m_pattern;
 };
@@ -1174,10 +1228,13 @@ virtual ~CFileType(){
 void addType( filetype_t type ){
 	filetype_copy_t* newTypes = new filetype_copy_t [m_nTypes + 1];
 	if ( m_nTypes > 0 ) {
-		for ( int i = 0; i < m_nTypes; i++ )
-			newTypes[i] = m_pTypes[i];
-		delete[] m_pTypes;
+		for ( int i = 0; i < m_nTypes; i++ ) {
+				newTypes[i] = m_pTypes[i];
+			}
+
+			delete[] m_pTypes;
 	}
+
 	m_pTypes = newTypes;
 	m_pTypes[m_nTypes] = type;
 	m_nTypes++;
@@ -1186,19 +1243,23 @@ void addType( filetype_t type ){
 }
 
 filetype_t GetTypeForWin32Filter( const char *filter ) const {
-	for ( int i = 0; i < m_nTypes; i++ )
-		if ( strcmp( m_pTypes[i].m_pattern.c_str(), filter ) == 0 ) {
+	for ( int i = 0; i < m_nTypes; i++ ) {
+			if ( strcmp( m_pTypes[i].m_pattern.c_str(), filter ) == 0 ) {
 			return filetype_t( m_pTypes[i].m_name.c_str(), m_pTypes[i].m_pattern.c_str() );
 		}
-	return filetype_t();
+		}
+
+		return filetype_t();
 }
 
 filetype_t GetTypeForGTKMask( const char *mask ) const {
-	for ( int i = 0; i < m_nTypes; i++ )
-		if ( strcmp( m_pstrGTKMasks[i],mask ) == 0 ) {
+	for ( int i = 0; i < m_nTypes; i++ ) {
+			if ( strcmp( m_pstrGTKMasks[i],mask ) == 0 ) {
 			return filetype_t( m_pTypes[i].m_name.c_str(), m_pTypes[i].m_pattern.c_str() );
 		}
-	return filetype_t();
+		}
+
+		return filetype_t();
 }
 
 int GetNumTypes(){
@@ -1210,6 +1271,7 @@ filetype_t GetTypeForIndex( int index ) const // Zero-based index.
 	if ( index >= 0 && index < m_nTypes ) {
 		return filetype_t( m_pTypes[index].m_name.c_str(), m_pTypes[index].m_pattern.c_str() );
 	}
+
 	return filetype_t();
 }
 
@@ -1229,32 +1291,43 @@ void ConstructWin32Filters(){
 	int i;
 	int len = 0;
 	DestroyWin32Filters();
-	for ( i = 0; i < m_nTypes; i++ )
-		len = len + strlen( m_pTypes[i].m_name.c_str() ) + strlen( m_pTypes[i].m_pattern.c_str() ) * 2 + 5;
-	m_strWin32Filters = new char[len + 1]; // length + null char
+	for ( i = 0; i < m_nTypes; i++ ) {
+			len = len + strlen( m_pTypes[i].m_name.c_str() ) + strlen( m_pTypes[i].m_pattern.c_str() ) * 2 + 5;
+		}
+
+		m_strWin32Filters = new char[len + 1]; // length + null char
 	for ( i = 0, w = m_strWin32Filters; i < m_nTypes; i++ )
 	{
-		for ( r = m_pTypes[i].m_name.c_str(); *r != '\0'; r++, w++ )
-			*w = *r;
-		*w++ = ' ';
+		for ( r = m_pTypes[i].m_name.c_str(); *r != '\0'; r++, w++ ) {
+				*w = *r;
+			}
+
+			*w++ = ' ';
 		*w++ = '(';
-		for ( r = m_pTypes[i].m_pattern.c_str(); *r != '\0'; r++, w++ )
-			*w = *r;
-		*w++ = ')';
+		for ( r = m_pTypes[i].m_pattern.c_str(); *r != '\0'; r++, w++ ) {
+				*w = *r;
+			}
+
+			*w++ = ')';
 		*w++ = '\0';
-		for ( r = m_pTypes[i].m_pattern.c_str(); *r != '\0'; r++, w++ )
-			*w = ( *r == ',' ) ? ';' : *r;
-		*w++ = '\0';
+		for ( r = m_pTypes[i].m_pattern.c_str(); *r != '\0'; r++, w++ ) {
+				*w = ( *r == ',' ) ? ';' : *r;
+			}
+
+			*w++ = '\0';
 	}
+
 	m_strWin32Filters[len] = '\0';
 }
 
 void DestroyGTKMasks(){
 	if ( m_pstrGTKMasks != NULL ) {
-		for ( char **p = m_pstrGTKMasks; *p != NULL; p++ )
-			delete[] *p;
+		for ( char **p = m_pstrGTKMasks; *p != NULL; p++ ) {
+				delete[] *p;
 	}
-	delete[] m_pstrGTKMasks;
+		}
+
+		delete[] m_pstrGTKMasks;
 }
 
 void ConstructGTKMasks(){
@@ -1269,15 +1342,20 @@ void ConstructGTKMasks(){
 		len = strlen( m_pTypes[i].m_name.c_str() ) + strlen( m_pTypes[i].m_pattern.c_str() ) + 3;
 		m_pstrGTKMasks[i] = new char[len + 1]; // length + null char
 		w = m_pstrGTKMasks[i];
-		for ( r = m_pTypes[i].m_name.c_str(); *r != '\0'; r++, w++ )
-			*w = *r;
-		*w++ = ' ';
+		for ( r = m_pTypes[i].m_name.c_str(); *r != '\0'; r++, w++ ) {
+				*w = *r;
+			}
+
+			*w++ = ' ';
 		*w++ = '(';
-		for ( r = m_pTypes[i].m_pattern.c_str(); *r != '\0'; r++, w++ )
-			*w = *r;
-		*w++ = ')';
+		for ( r = m_pTypes[i].m_pattern.c_str(); *r != '\0'; r++, w++ ) {
+				*w = *r;
+			}
+
+			*w++ = ')';
 		*w++ = '\0';
 	}
+
 	m_pstrGTKMasks[m_nTypes] = NULL;
 }
 
@@ -1301,6 +1379,7 @@ DWORD WINAPI win32_native_file_dialog_thread_func( LPVOID lpParam ){
 	else {
 		fileDialogComms->dlgRtnVal = GetSaveFileName( fileDialogComms->ofn );
 	}
+
 	fileDialogComms->done = true; // No need to synchronize around lock, one-way gate.
 	return 0;
 }
@@ -1311,6 +1390,19 @@ DWORD WINAPI win32_native_file_dialog_thread_func( LPVOID lpParam ){
  * @param[in] baseSubDir should have a trailing slash if not @c NULL
  */
 const char* file_dialog( void *parent, gboolean open, const char* title, const char* path, const char* pattern, const char *baseSubDir ){
+
+	const std::string nodMaps = NodProject_MapDirectory( g_pGameDescription->mGameFile == SCGHOST_GAME,
+		baseSubDir, g_pGameDescription->mNodMapPath, g_pGameDescription->mEnginePath, g_pGameDescription->mBaseGame );
+	if ( !nodMaps.empty() ) {
+		const std::string error = NodProject_ValidatePaths( nodMaps.c_str(), g_pGameDescription->mNodAssetPath );
+		if ( !error.empty() ) {
+			Sys_FPrintf( SYS_ERR, "NOD map directory: %s\n", error.c_str() );
+			gtk_MessageBox( parent, error.c_str(), _( "NOD Project Settings" ), MB_OK | MB_ICONERROR );
+			return NULL;
+		}
+
+		path = nodMaps.c_str();
+	}
 
 #ifdef _WIN32
 	static bool in_file_dialog = false;
@@ -1339,6 +1431,7 @@ const char* file_dialog( void *parent, gboolean open, const char* title, const c
 		if ( in_file_dialog ) {
 			return NULL;             // Avoid recursive entry.
 		}
+
 		in_file_dialog = true;
 		/* Set the members of the OPENFILENAME structure. */
 		// See http://msdn.microsoft.com/en-us/library/ms646839%28v=vs.85%29.aspx .
@@ -1356,6 +1449,7 @@ const char* file_dialog( void *parent, gboolean open, const char* title, const c
 			// GetFileTypeRegistry() instead of hardcoding it here.
 			ofn.lpstrFilter = "all files\0*.*\0"; // Second '\0' will be added to end of string.
 		}
+
 		szFile[0] = '\0';
 		ofn.lpstrFile = szFile;
 		ofn.nMaxFile = sizeof( szFile );
@@ -1363,12 +1457,15 @@ const char* file_dialog( void *parent, gboolean open, const char* title, const c
 			// szDirName: Radiant uses unix convention for paths internally
 			//   Win32 (of course) and Gtk (who would have thought) expect the '\\' convention
 			// copy path, replacing dir separators as appropriate
-			for ( r = path, w = szDirName; *r != '\0'; r++ )
+			for ( r = path, w = szDirName; *r != '\0'; r++ ) {
 				*w++ = ( *r == '/' ) ? '\\' : *r;
+			}
+
 			// terminate string
 			*w = '\0';
 			ofn.lpstrInitialDir = szDirName;
 		}
+
 		ofn.lpstrTitle = title;
 		ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
 
@@ -1392,15 +1489,19 @@ const char* file_dialog( void *parent, gboolean open, const char* title, const c
 			while ( gtk_events_pending() ) {
 				gtk_main_iteration();
 			}
+
 			if ( dialogDone ) {
 				break;
 			}
+
 			if ( fileDialogComms.done ) {
 				dialogDone = true;                 // One more loop of gtk_main_iteration() to get things in sync.
 			}
+
 			// Avoid tight infinte loop, add a small amount of sleep.
 			Sleep( 10 );
 		}
+
 		// Make absolutely sure that the thread is finished before we call CloseHandle().
 		WaitForSingleObject( fileDialogThreadHandle, INFINITE );
 		CloseHandle( fileDialogThreadHandle );
@@ -1433,18 +1534,22 @@ const char* file_dialog( void *parent, gboolean open, const char* title, const c
 		if ( baseSubDir ) {
 			strcat( buf, baseSubDir );
 		}
+
 		path = buf;
 	}
 
 	// alloc new path with extra char for dir separator
 	new_path = new char[strlen( path ) + 1 + 1];
 	// copy path, replacing dir separators as appropriate
-	for ( r = path, w = new_path; *r != '\0'; r++ )
-		*w++ = ( *r == '/' ) ? G_DIR_SEPARATOR : *r;
-	// add dir separator to end of path if required
+	for ( r = path, w = new_path; *r != '\0'; r++ ) {
+			*w++ = ( *r == '/' ) ? G_DIR_SEPARATOR : *r;
+		}
+
+		// add dir separator to end of path if required
 	if ( *( w - 1 ) != G_DIR_SEPARATOR ) {
 		*w++ = G_DIR_SEPARATOR;
 	}
+
 	// terminate string
 	*w = '\0';
 
@@ -1474,6 +1579,7 @@ const char* file_dialog( void *parent, gboolean open, const char* title, const c
 			// So I guess we won't need to garbage collect this.
 			gtk_file_chooser_add_filter( GTK_FILE_CHOOSER( file_sel ), filter );
 		}
+
 		//gtk_file_chooser_add_filter( GTK_FILE_CHOOSER( file_sel ), allTypesFilter );
 	}
 
@@ -1500,6 +1606,7 @@ const char* file_dialog( void *parent, gboolean open, const char* title, const c
 			type = typelist.GetTypeForGTKMask( gtk_file_filter_get_name( filter ) );
 		}
 	}
+
 	gtk_widget_destroy( file_sel );
 
 #ifdef _WIN32
@@ -1512,10 +1619,11 @@ const char* file_dialog( void *parent, gboolean open, const char* title, const c
 	}
 
 	// convert back to unix format
-	for ( w = szFile; *w != '\0'; w++ )
+	for ( w = szFile; *w != '\0'; w++ ) {
 		if ( *w == '\\' ) {
 			*w = '/';
 		}
+	}
 
 	/* \todo SPoG - file_dialog should return filetype information separately.. not force file extension.. */
 	if ( !open && pattern != NULL ) {
@@ -1545,6 +1653,7 @@ const char* file_dialog( void *parent, gboolean open, const char* title, const c
 					break;
 				}
 			}
+
 			if ( !knownExtension ) {
 				if ( gtk_MessageBox( parent, _( "Unknown file extension for this save operation.\nAttempt to save anyways?" ),
 									 _( "GtkRadiant" ), MB_YESNO ) == IDNO ) {
@@ -1623,8 +1732,9 @@ bool WINAPI color_dialog( void *parent, float *color, const char* title ){
 	gtk_widget_show( dlg );
 	gtk_grab_add( dlg );
 
-	while ( loop )
+	while ( loop ) {
 		gtk_main_iteration();
+	}
 
 	GdkColor gdkcolor;
 	gtk_color_selection_get_current_color( GTK_COLOR_SELECTION( GTK_COLOR_SELECTION_DIALOG( dlg )->colorsel ), &gdkcolor );
@@ -1664,6 +1774,7 @@ void OpenURL( GtkWidget *parent, const char *url ){
     if ( result ) {
         return;
     }
+
     Sys_Printf( "Could not open URL: %s\n", gerror->message );
     g_error_free( gerror );
 #endif
@@ -1701,6 +1812,7 @@ void CheckMenuSplitting( GtkWidget *&menu ){
 			if( !children ) {
 				continue;
 			}
+
 			item = GTK_WIDGET( g_list_last( children )->data );
 			g_object_ref( item );
 			gtk_container_remove( GTK_CONTAINER( menu ), item );

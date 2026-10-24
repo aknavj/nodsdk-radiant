@@ -9,6 +9,19 @@ def install_file( path, src_path, f ):
 	shutil.copyfile( src, dst )
 
 def install( path, src_path ):
+	helpers = []
+	for architecture in ('win32', 'win64'):
+		pair = ['gspawn-%s-helper.exe' % architecture,
+		        'gspawn-%s-helper-console.exe' % architecture]
+		if any(os.path.isfile(os.path.join(src_path, name)) for name in pair):
+			for name in pair:
+				if not os.path.isfile(os.path.join(src_path, name)):
+					raise FileNotFoundError('Missing GLib runtime helper: %s' % os.path.join(src_path, name))
+			helpers.extend(pair)
+	if not helpers:
+		raise FileNotFoundError('Missing GLib spawn helpers in %s; rebuild/stage the Windows runtime first' % src_path)
+	for name in helpers:
+		install_file(path, src_path, name)
 	for f in [ 'radiant.exe', 'radiant.pdb' ]:
 		install_file( path, src_path, f )
 		

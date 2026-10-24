@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: winding.h
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -52,7 +78,7 @@ int         Winding_IsTiny( winding_t *w );
 //returns true if the winding is huge
 int         Winding_IsHuge( winding_t *w );
 //clip the winding with the plane
-winding_t*  Winding_Clip( winding_t *in, plane_t *split, qboolean keepon );
+winding_t*  Winding_Clip( winding_t *in, plane_t *split, qboolean keepon, vec_t epsilon );
 //split the winding with the plane
 void        Winding_SplitEpsilon( winding_t *in, vec3_t normal, double dist,
 								  vec_t epsilon, winding_t **front, winding_t **back );

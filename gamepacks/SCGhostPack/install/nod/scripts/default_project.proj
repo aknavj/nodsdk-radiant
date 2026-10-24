@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!DOCTYPE project [
+  <!ELEMENT project (key*)>
+  <!ELEMENT key EMPTY>
+  <!ATTLIST key name CDATA #REQUIRED value CDATA #REQUIRED>
+]>
+<project>
+  <key name="version" value="2"/>
+  <key name="template_version" value="1"/>
+  <key name="basepath" value="$TEMPLATEenginepath$TEMPLATEbasedir/"/>
+  <key name="entitypath" value="$TEMPLATEenginepath$TEMPLATEbasedir/scripts/entities.def"/>
+  <key name="brush_primit" value="0"/>
+  <key name="gamename" value="nod"/>
+  <key name="gamemode" value="sp"/>
+</project>

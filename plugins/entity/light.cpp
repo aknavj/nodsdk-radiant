@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: light.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -22,6 +48,7 @@
 #include "plugin.h"
 #include "entity.h"
 #include "light.h"
+#include "../../radiant/nodclass.h"
 
 void DrawSphere( vec3_t center, float radius, int sides, int nGLState ){
 	int i, j;
@@ -82,6 +109,7 @@ void DrawSphere( vec3_t center, float radius, int sides, int nGLState ){
 		VectorAdd( v, center, v );
 		g_QglTable.m_pfn_qglVertex3fv( v );
 	}
+
 	g_QglTable.m_pfn_qglEnd();
 }
 
@@ -122,6 +150,7 @@ float CalculateEnvelopeForLight( entity_t * e, float fFalloffTolerance ){
 			iLightFlags &= ~LIGHT_ATTEN_LINEAR;
 			iLightFlags |= LIGHT_ATTEN_ANGLE;
 		}
+
 		// angle attenuate
 		if ( iSpawnFlags & 2 ) {
 			iLightFlags |= LIGHT_ATTEN_ANGLE;
@@ -140,6 +169,7 @@ float CalculateEnvelopeForLight( entity_t * e, float fFalloffTolerance ){
 			iLightFlags |= LIGHT_ATTEN_LINEAR;
 			iLightFlags &= ~LIGHT_ATTEN_ANGLE;
 		}
+
 		// no angle attenuate?
 		if ( iSpawnFlags & 2 ) {
 			iLightFlags &= ~LIGHT_ATTEN_ANGLE;
@@ -153,11 +183,13 @@ float CalculateEnvelopeForLight( entity_t * e, float fFalloffTolerance ){
 			fFade = 1.f;
 		}
 	}
+
 	// set light intensity
 	fIntensity = FloatForKey( e, "_light" );
 	if ( fIntensity == 0.f ) {
 		fIntensity = FloatForKey( e, "light" );
 	}
+
 	if ( fIntensity == 0.f ) {
 		fIntensity = 300.f;
 	}
@@ -167,6 +199,7 @@ float CalculateEnvelopeForLight( entity_t * e, float fFalloffTolerance ){
 	if ( fScale <= 0.f ) {
 		fScale = 1.f;
 	}
+
 	fIntensity *= fScale;
 
 	// amount of photons
@@ -179,15 +212,18 @@ float CalculateEnvelopeForLight( entity_t * e, float fFalloffTolerance ){
 		//!\todo (spog) can't access global objects in a module - globals are EVIL - solution: API for querying global settings.
 		fEnvelope = 131072 /*g_MaxWorldCoord * 2.f*/;
 	}
+
 	// solve distance for linear lights
 	else if ( iLightFlags & LIGHT_ATTEN_LINEAR ) {
 		fEnvelope = ( ( fPhotons * fLinearScale ) - fFalloffTolerance ) / fFade;
 	}
+
 	// solve for inverse square falloff
 	else{
 		fEnvelope = sqrt( fPhotons / fFalloffTolerance ) /* + fRadius */ ; // Arnout radius is always 0, only for area lights
 
 	}
+
 	return fEnvelope;
 }
 
@@ -217,11 +253,13 @@ float CalculateLightRadius( entity_t * e, bool outer ){
 				fIntensity *= .25f;
 			}
 		}
+
 		// set light scale (sof2)
 		fScale = FloatForKey( e, "scale" );
 		if ( fScale <= 0.f ) {
 			fScale = 1.f;
 		}
+
 		fIntensity *= fScale;
 
 		fEnvelope = fIntensity;
@@ -266,7 +304,8 @@ void Light_OnKeyValueChanged( entity_t *e, const char *key, const char* value ){
 }
 
 bool Entity_IsLight( entity_t *e ){
-	return e->eclass != NULL && e->eclass->nShowFlags & ECLASS_LIGHT; //strncmp(ValueforKey(e, "classname"), "light") == 0
+	return e->eclass != NULL && !NodClass_Registered( e->eclass->comments ) &&
+		( e->eclass->nShowFlags & ECLASS_LIGHT );
 }
 
 static void DrawLightSphere( entity_t * e, int nGLState, int pref ){
@@ -547,8 +586,10 @@ void DrawLight( entity_t* e, int nGLState, int pref, int nViewType ){
 						}
 					}
 				}
+
 				g_QglTable.m_pfn_qglEnd();
 			}
+
 			g_QglTable.m_pfn_qglPopAttrib();
 		}
 	}

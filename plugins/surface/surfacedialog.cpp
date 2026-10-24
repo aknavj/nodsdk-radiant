@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: surfacedialog.cpp
+Version: 0.6.7
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -33,6 +59,8 @@
 #include <glib/gi18n.h>
 
 #include "surfdlg_plugin.h"
+#include "nodsurface.h"
+#include "nodsurfacepresets.h"
 
 #ifdef _DEBUG
 //  #define DBG_SI 1
@@ -152,6 +180,43 @@ GtkAdjustment *fit_height_spinbutton_adj;
 GtkWidget *fit_height_spinbutton;
 GtkWidget *fit_button;
 GtkWidget *axial_button;
+
+static GtkWidget *nod_surface_status;
+static GtkWidget *nod_surface_preset;
+static GtkWidget *nod_surface_capture;
+static GtkWidget *nod_surface_apply;
+static GtkWidget *nod_surface_confirm;
+static NodSurfacePreset nod_captured_surface;
+static bool nod_has_capture = false;
+static GtkWidget *nod_saved_presets, *nod_preset_name;
+static NodSurfacePresetLibrary nod_preset_library;
+static bool nod_preset_load_failed = false;
+
+static std::string NodSurface_LibraryPath(){
+	gchar *path = g_build_filename( g_FuncTable.m_pfnGetGamePath(), "nod", "editor", "surface-presets.xml", NULL );
+	const std::string result = path;
+	g_free( path );
+	return result;
+}
+
+static bool NodSurface_Enabled(){
+	return NodSurface_IsProfile( g_FuncTable.m_pfnGetGameFile() );
+}
+
+static void NodSurface_Update(){
+	if ( !nod_surface_status ) {
+		return;
+	}
+
+	char text[128];
+	g_snprintf( text, sizeof( text ), _( "%u faces; session capture: %s." ),
+			 texdef_face_list_size(), nod_has_capture ? _( "available" ) : _( "none" ) );
+	gtk_label_set_text( GTK_LABEL( nod_surface_status ), text );
+	gtk_widget_set_sensitive( nod_surface_capture, texdef_face_list_size() == 1 );
+	const int operation = gtk_combo_box_get_active( GTK_COMBO_BOX( nod_surface_preset ) );
+	gtk_widget_set_sensitive( nod_surface_apply, !texdef_face_list_empty() && operation >= 0
+		&& ( !NodSurface_UsesCapture( static_cast<NodSurfaceOperation>( operation ) ) || nod_has_capture ) );
+}
 
 // Callbacks
 gboolean on_texture_combo_entry_key_press_event( GtkWidget *widget, GdkEventKey *event, gpointer user_data );
@@ -327,11 +392,13 @@ static void PopulateTextureComboList(){
 				items = g_list_append( items, (gpointer) tmp_texdef->GetName() );
 				num_of_list_items++;
 			}
+
 			// Make sure the combo list isn't too long
 			if ( num_of_list_items >= MAX_NUM_LIST_ITEMS ) {
 				break;
 			}
 		}
+
 		// If this isn't added last (to the top of the list), g_list_find freaks.
 		items = g_list_prepend( items, (gpointer) blank );
 		// For Texture Entry, activate only on entry change
@@ -342,6 +409,7 @@ static void PopulateTextureComboList(){
 	{
 		gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( texture_combo ), (const char *)lst->data );
 	}
+
 	g_list_free( items );
 
 	gtk_combo_box_set_active( GTK_COMBO_BOX( GTK_COMBO_BOX_TEXT( texture_combo ) ), 0 );
@@ -373,6 +441,7 @@ static void GetTexdefInfo_from_Radiant(){
 	IsFaceConflicting();
 	PopulateTextureComboList();
 	ZeroOffsetValues();
+	NodSurface_Update();
 }
 
 static gint apply_and_hide( GtkWidget *widget, GdkEvent *event, gpointer data ) {
@@ -382,6 +451,7 @@ static gint apply_and_hide( GtkWidget *widget, GdkEvent *event, gpointer data ) 
     GetTexdefInfo_from_Radiant();
     SetTexMods();
   }
+
   HideDlg();
   return TRUE;
 }
@@ -391,6 +461,7 @@ static gint surface_dialog_key_press( GtkWidget *widget, GdkEventKey *event, gpo
   if ( event->keyval != GDK_KEY_Escape ) {
     return FALSE;
   }
+
   return apply_and_hide( widget, (GdkEvent*)event, data );
 }
 
@@ -410,6 +481,7 @@ void DoSnapTToGrid( float hscale, float vscale ){
 	if ( hscale == 0.0f ) {
 		hscale = 0.5f;
 	}
+
 	if ( vscale == 0.0f ) {
 		vscale = 0.5f;
 	}
@@ -467,6 +539,8 @@ void ToggleSurface() {
 #endif
   if ( !g_surfwin ) {
     DoSurface();
+  } else if ( NodSurface_Enabled() ) {
+    apply_and_hide( NULL, NULL, NULL );
   } else {
     CancelDlg();
   }
@@ -489,8 +563,13 @@ void ShowDlg() {
   }
 
   GetTexdefInfo_from_Radiant();
-  GetTexMods( TRUE ); // Set Initial Undo Point
-  g_surfwin = TRUE;
+  if ( NodSurface_Enabled() ) {
+		m_nUndoId = 0;
+	} else {
+		GetTexMods( TRUE ); // Set Initial Undo Point
+	}
+
+	g_surfwin = TRUE;
 }
 
 void HideDlg() {
@@ -511,6 +590,7 @@ void CancelDlg() {
     g_bListenUpdate = true;
     m_nUndoId = 0;
   }
+
   HideDlg();
 }
 
@@ -632,6 +712,126 @@ void FitAll(){
 	on_fit_button_clicked( NULL, NULL );
 }
 
+static void NodSurface_Error( const char *message ){
+	Sys_FPrintf( SYS_WRN, "NOD surface preset: %s\n", message );
+	g_FuncTable.m_pfnMessageBox( SurfaceInspector, message, _( "NOD Surface Presets" ), MB_OK | MB_ICONWARNING, NULL );
+}
+
+static void NodSurface_RefreshLibrary(){
+	GtkListStore *store = GTK_LIST_STORE( gtk_combo_box_get_model( GTK_COMBO_BOX( nod_saved_presets ) ) );
+	gtk_list_store_clear( store );
+	for ( std::map<std::string, NodSurfacePreset>::const_iterator i = nod_preset_library.presets.begin();
+		  i != nod_preset_library.presets.end(); ++i ) {
+		gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( nod_saved_presets ), i->first.c_str() );
+}
+}
+
+static void NodSurface_SavedSelected( GtkComboBox *, gpointer ){
+	gchar *name = gtk_combo_box_text_get_active_text( GTK_COMBO_BOX_TEXT( nod_saved_presets ) );
+	if ( !name ) {
+		return;
+	}
+
+	std::map<std::string, NodSurfacePreset>::const_iterator found = nod_preset_library.presets.find( name );
+	if ( found != nod_preset_library.presets.end() ) {
+		nod_captured_surface = found->second;
+		nod_has_capture = true;
+		gtk_entry_set_text( GTK_ENTRY( nod_preset_name ), name );
+		gtk_combo_box_set_active( GTK_COMBO_BOX( nod_surface_preset ), NOD_SURFACE_CAPTURED );
+		NodSurface_Update();
+	}
+
+	g_free( name );
+}
+
+static void NodSurface_WriteLibrary( GtkButton *, gpointer data ){
+	const std::string name = gtk_entry_get_text( GTK_ENTRY( nod_preset_name ) );
+	const char *invalid = NodPreset_ValidateName( name );
+	if ( !invalid && !GPOINTER_TO_INT( data ) && !nod_has_capture ) {
+		invalid = "Capture or select a surface preset first.";
+	}
+
+	if ( invalid ) { NodSurface_Error( invalid ); return; }
+	const bool exists = nod_preset_library.presets.find( name ) != nod_preset_library.presets.end();
+	if ( GPOINTER_TO_INT( data ) && !exists ) { NodSurface_Error( "Select an existing named preset to delete." ); return; }
+	if ( ( exists || nod_preset_load_failed ) && g_FuncTable.m_pfnMessageBox( SurfaceInspector,
+		GPOINTER_TO_INT( data ) ? _( "Delete this saved surface preset?" ) :
+		_( "Replace the existing preset or invalid preset library?" ), _( "Surface presets" ),
+		MB_YESNO | MB_ICONWARNING, NULL ) != IDYES ) {
+		return;
+	}
+
+	NodSurfacePresetLibrary next = nod_preset_library;
+	if ( GPOINTER_TO_INT( data ) ) {
+		next.presets.erase( name );
+	} else {
+		next.presets[name] = nod_captured_surface;
+	}
+
+	std::string error;
+	if ( !next.Save( NodSurface_LibraryPath().c_str(), error ) ) { NodSurface_Error( error.c_str() ); return; }
+	nod_preset_library = next;
+	nod_preset_load_failed = false;
+	NodSurface_RefreshLibrary();
+}
+
+static void NodSurface_CaptureClicked( GtkButton *, gpointer ){
+	if ( texdef_face_list_size() != 1 ) {
+		NodSurface_Error( _( "Select exactly one face to capture its material and UV values." ) );
+		return;
+	}
+
+	const NodSurfacePreset preset = NodSurface_Capture( get_texdef_face_list()->texdef );
+	const char *error = NodSurface_Validate( preset, true, true );
+	if ( error ) {
+		NodSurface_Error( error );
+		return;
+	}
+
+	nod_captured_surface = preset;
+	nod_has_capture = true;
+	NodSurface_Update();
+}
+
+static void NodSurface_PresetChanged( GtkComboBox *, gpointer ){
+	NodSurface_Update();
+}
+
+static void NodSurface_ApplyClicked( GtkButton *, gpointer ){
+	if ( texdef_face_list_empty() ) {
+		NodSurface_Error( _( "Select one or more brush faces first." ) );
+		return;
+	}
+
+	const NodSurfaceOperation operation = static_cast<NodSurfaceOperation>(
+		gtk_combo_box_get_active( GTK_COMBO_BOX( nod_surface_preset ) ) );
+	const NodSurfacePreset *captured = nod_has_capture ? &nod_captured_surface : NULL;
+	texdef_t probe = get_texdef_face_list()->texdef;
+	const char *error = NodSurface_Apply( probe, operation, captured );
+	if ( error ) {
+		NodSurface_Error( error );
+		return;
+	}
+
+	if ( texdef_face_list_size() > 1 && gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( nod_surface_confirm ) )
+		 && g_FuncTable.m_pfnMessageBox( SurfaceInspector,
+			_( "Apply to all selected faces?\nMaterial/UV edits cannot be compiled back to native." ),
+			_( "NOD Surface Presets" ), MB_YESNO | MB_ICONWARNING, NULL ) != IDYES ) {
+		return;
+	}
+
+	// Commit outstanding live edits before starting the preset's own undo step.
+	GetTexMods( TRUE );
+	GetTexdefInfo_from_Radiant();
+	for ( texdef_to_face_t *face = get_texdef_face_list(); face; face = face->next ) {
+		NodSurface_Apply( face->texdef, operation, captured );
+	}
+
+	GetTexMods( TRUE );
+	GetTexdefInfo_from_Radiant();
+	SetTexMods();
+}
+
 
 ////////////////////////////////////////////////////////////////////
 //
@@ -679,6 +879,67 @@ GtkWidget* create_SurfaceInspector( void ){
 	vbox7 = gtk_vbox_new( FALSE, 0 );
 	gtk_container_add( GTK_CONTAINER( viewport8 ), vbox7 );
 	gtk_widget_show( vbox7 );
+
+	if ( NodSurface_Enabled() ) {
+		gtk_window_set_title( GTK_WINDOW( SurfaceInspector ), _( "NOD Surfaces (editor only)" ) );
+		GtkWidget *frame = gtk_frame_new( _( "Material / UV presets" ) );
+		gtk_box_pack_start( GTK_BOX( vbox7 ), frame, FALSE, FALSE, 4 );
+		GtkWidget *box = gtk_vbox_new( FALSE, 5 );
+		gtk_container_set_border_width( GTK_CONTAINER( box ), 5 );
+		gtk_container_add( GTK_CONTAINER( frame ), box );
+		label = gtk_label_new( _( "MAP only; native material/UV compilation unsupported.\n"
+								 "Native surface flags are unchanged." ) );
+		gtk_misc_set_alignment( GTK_MISC( label ), 0.0, 0.5 );
+		gtk_box_pack_start( GTK_BOX( box ), label, FALSE, FALSE, 0 );
+		nod_surface_status = gtk_label_new( "" );
+		gtk_misc_set_alignment( GTK_MISC( nod_surface_status ), 0.0, 0.5 );
+		gtk_box_pack_start( GTK_BOX( box ), nod_surface_status, FALSE, FALSE, 0 );
+		nod_surface_preset = gtk_combo_box_text_new();
+		const char *names[] = { _( "Reset UV" ),
+			_( "Placeholder material" ), _( "Captured material + UV" ),
+			_( "Captured material only" ), _( "Captured UV only" ) };
+		for ( size_t i = 0; i < G_N_ELEMENTS( names ); ++i ) {
+			gtk_combo_box_text_append_text( GTK_COMBO_BOX_TEXT( nod_surface_preset ), names[i] );
+		}
+
+		gtk_combo_box_set_active( GTK_COMBO_BOX( nod_surface_preset ), 0 );
+		gtk_box_pack_start( GTK_BOX( box ), nod_surface_preset, FALSE, FALSE, 0 );
+		GtkWidget *buttons = gtk_hbox_new( FALSE, 5 );
+		gtk_box_pack_start( GTK_BOX( box ), buttons, FALSE, FALSE, 0 );
+		nod_surface_capture = gtk_button_new_with_label( _( "Capture selected face" ) );
+		nod_surface_apply = gtk_button_new_with_label( _( "Apply preset" ) );
+		gtk_box_pack_start( GTK_BOX( buttons ), nod_surface_capture, TRUE, TRUE, 0 );
+		gtk_box_pack_start( GTK_BOX( buttons ), nod_surface_apply, TRUE, TRUE, 0 );
+		nod_surface_confirm = gtk_check_button_new_with_label( _( "Confirm multiple faces" ) );
+		gtk_toggle_button_set_active( GTK_TOGGLE_BUTTON( nod_surface_confirm ), TRUE );
+		gtk_box_pack_start( GTK_BOX( box ), nod_surface_confirm, FALSE, FALSE, 0 );
+		nod_saved_presets = gtk_combo_box_text_new();
+		gtk_box_pack_start( GTK_BOX( box ), nod_saved_presets, FALSE, FALSE, 0 );
+		nod_preset_name = gtk_entry_new();
+		gtk_entry_set_max_length( GTK_ENTRY( nod_preset_name ), 63 );
+		gtk_entry_set_text( GTK_ENTRY( nod_preset_name ), _( "New preset" ) );
+		gtk_box_pack_start( GTK_BOX( box ), nod_preset_name, FALSE, FALSE, 0 );
+		buttons = gtk_hbox_new( FALSE, 5 );
+		gtk_box_pack_start( GTK_BOX( box ), buttons, FALSE, FALSE, 0 );
+		GtkWidget *save = gtk_button_new_with_label( _( "Save preset" ) );
+		GtkWidget *remove = gtk_button_new_with_label( _( "Delete preset" ) );
+		gtk_box_pack_start( GTK_BOX( buttons ), save, TRUE, TRUE, 0 );
+		gtk_box_pack_start( GTK_BOX( buttons ), remove, TRUE, TRUE, 0 );
+		g_signal_connect( save, "clicked", G_CALLBACK( NodSurface_WriteLibrary ), GINT_TO_POINTER( 0 ) );
+		g_signal_connect( remove, "clicked", G_CALLBACK( NodSurface_WriteLibrary ), GINT_TO_POINTER( 1 ) );
+		g_signal_connect( nod_saved_presets, "changed", G_CALLBACK( NodSurface_SavedSelected ), NULL );
+		g_signal_connect( nod_surface_capture, "clicked", G_CALLBACK( NodSurface_CaptureClicked ), NULL );
+		g_signal_connect( nod_surface_apply, "clicked", G_CALLBACK( NodSurface_ApplyClicked ), NULL );
+		g_signal_connect( nod_surface_preset, "changed", G_CALLBACK( NodSurface_PresetChanged ), NULL );
+		std::string error;
+		nod_preset_load_failed = !nod_preset_library.Load( NodSurface_LibraryPath().c_str(), error );
+		if ( nod_preset_load_failed ) {
+			NodSurface_Error( error.c_str() );
+		}
+
+		NodSurface_RefreshLibrary();
+		gtk_widget_show_all( frame );
+	}
 
 	viewport9 = gtk_viewport_new( NULL, NULL );
 	gtk_box_pack_start( GTK_BOX( vbox7 ), viewport9, FALSE, FALSE, 0 );
@@ -1289,6 +1550,7 @@ void on_texture_combo_entry_activate( GtkEntry *entry, gpointer user_data ){
 					strcpy( old_texture_entry, text );
 					tmp_texdef->SetName( text );
 				}
+
 				GetTexMods();
 			}
 		}
@@ -1310,6 +1572,7 @@ static void on_match_grid_button_clicked( GtkButton *button, gpointer user_data 
 	} else {
 		vscale = gtk_spin_button_get_value( GTK_SPIN_BUTTON( vscale_value_spinbutton ) );
 	}
+
 	DoSnapTToGrid( hscale, vscale );
 }
 
@@ -1329,6 +1592,7 @@ static void on_hshift_value_spinbutton_value_changed( GtkSpinButton *spinbutton,
 			tmp_texdef->shift[0] = texdef_SI_values.shift[0] + texdef_offset.shift[0];
 			is_HShift_conflicting = FALSE;
 		}
+
 		GetTexMods();
 	}
 }
@@ -1348,6 +1612,7 @@ static void on_vshift_value_spinbutton_value_changed( GtkSpinButton *spinbutton,
 			tmp_texdef->shift[1] = texdef_SI_values.shift[1] + texdef_offset.shift[1];
 			is_VShift_conflicting = FALSE;
 		}
+
 		GetTexMods();
 	}
 }
@@ -1367,6 +1632,7 @@ static void on_hscale_value_spinbutton_value_changed( GtkSpinButton *spinbutton,
 			tmp_texdef->scale[0] = texdef_SI_values.scale[0] + texdef_offset.scale[0];
 			is_HScale_conflicting = FALSE;
 		}
+
 		GetTexMods();
 	}
 }
@@ -1386,6 +1652,7 @@ static void on_vscale_value_spinbutton_value_changed( GtkSpinButton *spinbutton,
 			tmp_texdef->scale[1] = texdef_SI_values.scale[1] + texdef_offset.scale[1];
 			is_VScale_conflicting = FALSE;
 		}
+
 		GetTexMods();
 	}
 }
@@ -1405,6 +1672,7 @@ static void on_rotate_value_spinbutton_value_changed( GtkSpinButton *spinbutton,
 			tmp_texdef->rotate = texdef_SI_values.rotate + texdef_offset.rotate;
 			is_Rotate_conflicting = FALSE;
 		}
+
 		GetTexMods();
 	}
 }
@@ -1547,5 +1815,6 @@ static void on_axial_button_clicked( GtkButton *button, gpointer user_data ){
 	if ( !texdef_face_list_empty() ) {
 		SetTexdef_FaceList( get_texdef_face_list(), FALSE, TRUE );
 	}
+
 	Sys_UpdateWindows( W_ALL );
 }

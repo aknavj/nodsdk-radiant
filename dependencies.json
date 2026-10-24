@@ -1,0 +1,12 @@
+{
+  "nodsdk-scghost": {
+    "url": "https://github.com/aknavj/nodsdk-scghost.git",
+    "revision": "004c7e190e2d97e93cde5ff40d0c6d780f847384",
+    "path": "libs/nodsdk-scghost"
+  },
+  "glm": {
+    "url": "https://github.com/g-truc/glm.git",
+    "revision": "bf71a834948186f4097caa076cd2663c69a10e1e",
+    "path": "libs/glm"
+  }
+}
