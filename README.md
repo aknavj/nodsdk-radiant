@@ -1,129 +1,94 @@
-GtkRadiant
-==========
+# OpenNOD Radiant
 
-![logo](https://icculus.org/gtkradiant/images/logo-radiant.png)
+GtkRadiant fork for StarCraft: Ghost / NOD map restoration and authoring.
+Supports brush MAP editing, live NOT entity placement and instance properties,
+DDS/NSA material previews, NOD/NMB props, and SDK-backed level conversion.
 
-GtkRadiant is an open-source, cross-platform level editor for id Tech based games. It comes with some map compilers and data authoring tools.
+## Requirements
 
-Downloads
----------
+- Git, Bash, Python 3.9+.
+- **Windows:** Git Bash, Visual Studio 2022 C++ workload, Windows SDK.
+  The editor builds as **Win32**; an external x64 SDK is supported.
+- **Linux:** C/C++ compiler, pkg-config, SCons, and development packages for
+  GTK2, GtkGLExt, libxml2, JPEG, PNG, zlib, and OpenGL.
+- [OpenNOD SDK](https://github.com/aknavj/nodsdk-scghost) binaries:
+  `NODTemplates`, `NOTEditor`, `NSDEditor` (`.exe` on Windows).
+- Extracted game assets; the asset root must contain `Materials`.
+  Original assets remain read-only and are not included.
 
-Ready-to-use GtkRadiant packages are available on the [Downloads page](http://icculus.org/gtkradiant/downloads.html) on GtkRadiant's website. Some [installation instruction](https://icculus.org/gtkradiant/installation.html) may be useful.
+## Build and run
 
-Useful links
-------------
-
-- [GtkRadiant website](https://icculus.org/gtkradiant/)
-- [Documentation](https://icculus.org/gtkradiant/documentation.html)
-
-Supported games
----------------
-
-GtkRadiant provides level editing support for [Quake](https://en.wikipedia.org/wiki/Quake_(video_game)), [Quake2](https://en.wikipedia.org/wiki/Quake_II), [Quake2 Re-Release](https://en.wikipedia.org/wiki/Quake_II#Enhanced_version_and_Call_of_the_Machine), [Quake III Arena](https://ioquake3.org), [QuakeLive](https://www.quakelive.com), [Quetoo](http://quetoo.org), [Return to Castle Wolfenstein](https://en.wikipedia.org/wiki/Return_to_Castle_Wolfenstein), [Star Trek Voyager: Elite Force](https://en.wikipedia.org/wiki/Star_Trek:_Voyager_–_Elite_Force), [Star Wars Jedi Knight: Jedi Academy](https://en.wikipedia.org/wiki/Star_Wars_Jedi_Knight:_Jedi_Academy), [Unvanquished](https://www.unvanquished.net), [Urban Terror](http://urbanterror.info), [Wolfenstein: Enemy Territory](http://www.splashdamage.com/content/wolfenstein-enemy-territory-barracks).
-
-How to build
-------------
-
-Experimental StarCraft Ghost (NOD Engine) authoring support is available as a
-bundled gamepack. See [the profile guide](gamepacks/SCGhostPack/README.md) for
-setup and limitations. This is source-map editing support, not binary level
-export or a verified recreation of the original licensed tool. Native DDS and
-`.nsa` material previews can read an external asset directory without importing
-or modifying the original assets.
-
-You can find more complete instructions to build on Windows [here](https://icculus.org/gtkradiant/documentation/windows_compile_guide/) and to build on Mac OS [here](apple/README.md).
-
-### Windows editor build (Visual Studio 2022)
-
-Use Visual Studio 2022 with the **Desktop development with C++** workload and
-a Windows SDK. The supported configuration for the bundled Windows runtime
-dependencies is **Win32**, not x64. Python 3 and SCons are required for dependency
-setup.
-
-Setup fetches the SDK and GLM revisions pinned in `dependencies.json`.
-For an existing Windows dependency installation, restore only these small
-source dependencies with `python dependencies.py` before building the model
-module. Dirty dependency checkouts are rejected rather than overwritten.
-
-From a **Developer PowerShell for VS 2022**, in the source directory:
-
-```powershell
-# Restore runtime/build dependencies and stage only the bundled NOD profile.
-scons target=setup setup_packs=SCGhostPack setup_platforms=local
-
-# Build the editor, its dependent libraries, and the profile's required modules.
-msbuild .\radiant.sln "/t:radiant;entity;image;imagepng;map;mapxml;model;shaders;surface;vfspk3" /p:Configuration=Release /p:Platform=Win32 /m
-
-# Launch with the runtime directory as the working directory.
-Push-Location .\install
-try { .\radiant.exe } finally { Pop-Location }
-```
-
-This editor-only build does not require BSPC, Quake map compilers, or the legacy
-`v141_xp` toolset. Building the entire solution also builds BSPC, whose separately
-fetched project still requires that legacy toolset. Other game profiles may
-require additional editor modules.
-
-The Linux version is developed and distributed via Flatpak. See [GtkRadiant on Flathub](https://flathub.org/apps/io.github.TTimo.GtkRadiant).
-
-Building locally on Arch is the only setup that's likely to work as it's my daily driver. Ubuntu, Fedora etc. you are on your own. See the Flatpak SDK section below.
+From the repository root:
 
 ```sh
-# ArchLinux
-pacman -S git scons libxml2 gtk2 freeglut gtkglext subversion libjpeg-turbo
+bash build.sh \
+  --sdk-dir "/path/to/OpenNOD-SDK" \
+  --asset-root "/path/to/game_files" \
+  --workspace "/path/to/authoring"
+
+cd install
+./radiant.exe  # Windows; use ./radiant.bin on Linux
 ```
+
+Windows paths such as `'C:\SDK\OpenNOD-SDK-0.6.7-windows-x64'` are accepted.
+
+| Option | Environment variable | Default |
+| --- | --- | --- |
+| `--sdk-dir DIR` | `NOD_SDK_DIR` | Existing `install/scghost.game`, then a single sibling SDK package. |
+| `--asset-root DIR` | `NOD_ASSET_ROOT` | Existing `install/scghost.game`. |
+| `--workspace DIR` | `NOD_WORKSPACE` | Existing profile workspace, then `install/workspace`. |
+| `--configuration Release\|Debug` | - | Release |
+| `--jobs N` | - | CPU count |
+
+The root [build_scghost.py](build_scghost.py) helper restores dependencies,
+builds the editor and required modules into `install`, configures the SC Ghost
+profile, and verifies NOT templates. BSPC and Quake map compilers are not built.
+
+## Usage
+
+- Open `<workspace>/nod/maps/test_room.map` or create a new MAP.
+- **N > Entities > Place entity:** browse and place NOT templates.
+- **File > Project Settings:** configure asset and SDK paths. Missing paths
+  can leave the placement list empty; restart after changing the asset root.
+- **Bsp > Convert NOD level...:** requires same-build SDK executables
+  `MAPtoNIL`, `MAPtoNSD`, and `MAPtoNPD`.
+- Radiant edits instance overrides; shared NOT edits belong in NOT Editor.
+
+## Clean
+
+From the repository root:
 
 ```sh
-# get the source
-git clone "https://github.com/TTimo/GtkRadiant.git"
-
-# enter the source tree
-cd GtkRadiant
-
-# build everything
-scons
+bash clean.sh
 ```
 
-You can build a specific part like this:
+Close the editor first. Cleanup uses MSBuild/SCons to remove compiler outputs
+for the selected configuration. Dependencies, profiles, preferences, maps, and
+original assets are kept. Use `--configuration Debug` to clean a Debug build.
+Do not build and clean concurrently.
 
-```sh
-# only build the GtkRadiant level editor
-scons target="radiant"
+## Status and documentation
 
-# only build the q3map2 map compiler and the q3data tool
-scons target="q3map2,q3data"
-```
+Experimental; not the original editor or complete NOD engine support.
+Windows build/startup and clean/rebuild are verified. Native Linux compilation
+remains unverified. Keep map backups and validate exports in a disposable runtime.
 
-Level editor binary (`radiant`) and tools (like `q3map2`) will be found in `install/` directory. 
-The build process automatically fetches gamepacks.
+- [StarCraft Ghost workflow](gamepacks/SCGhostPack/README.md)
+- [Changelog](CHANGELOG.md)
+- [Issues](https://github.com/aknavj/nodsdk-radiant/issues)
+- Based on [GtkRadiant](https://github.com/TTimo/GtkRadiant); fork version
+  **0.6.7**, aligned with OpenNOD SDK.
 
-Building on Linux with the Flatpak SDK
---------------------------------------
+## Project scope and license
 
-```sh
-# get the flatpak manifest
-git clone "https://github.com/flathub/io.github.TTimo.GtkRadiant.git"
+Tools for StarCraft: Ghost map restoration and preservation, not a game remake.
+No proprietary game assets are included; their rights and licensing remain separate.
 
-# use flatpak-builder
-cd io.github.TTimo.GtkRadiant
-flatpak-builder --force-clean --user --install gtkradiant io.github.TTimo.GtkRadiant.json
-```
+Based on GtkRadiant (**GPL-2.0-or-later**), with **GPL-3.0** fork contributions.
+Some components use BSD or LGPL licenses. Preserve original copyright and license
+notices. See [LICENSE](LICENSE), [GPL](GPL), [LGPL](LGPL), [BSD](BSD), and source headers.
+GPL permits commercial use subject to its terms.
 
-You can also checkout the GtkRadiant tree locally and [modify the manifest to point to it](https://gist.github.com/TTimo/fd683b368048dc8802e9aaf353ef68ec).
-
-Here is what you can do for debugging:
-
-```sh
-flatpak run --command=sh --devel io.github.TTimo.GtkRadiant
-gdb /app/gtkradiant/radiant.bin
-```
-
-Getting in touch
-----------------
-
-The [#radiant channel at QuakeNet](https://webchat.quakenet.org/?channels=radiant) is the official GtkRadiant IRC channel. Come and chat about level design, development or bugs, you're welcome. Bugs can be submitted on the [GitHub issue tracker](https://github.com/TTimo/GtkRadiant/issues).
-
-Legal
------
-
-GtkRadiant source code is copyrighted by [id Software, Inc](http://idsoftware.com/) and various contributors and protected by the [General Public License v2](GPL).
+---
+This project uses AI-assisted development with collaborative human/AI oversight
+and human review of output.
