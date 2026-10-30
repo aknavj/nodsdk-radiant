@@ -8,7 +8,7 @@ StaRev - Starcraft Ghost reversed
 This file is part of the StaRev source code.
 
 File: map.cpp
-Version: 0.6.7
+Version: 0.6.8
 
 StaRev is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3
@@ -59,6 +59,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "nodbounds.h"
 #include "nodview.h"
 #include "nodviewstorage.h"
+#include "nodsurface.h"
 
 static bool nodImportingMap = false;
 static bool nodSidecarRejected = false;
@@ -163,10 +164,10 @@ void Map_BuildBrushData( void ){
 	{
 		next = b->next;
 		Brush_Build( b, true, false, false );
-		const bool nativeGeometry = b->owner && ( ( b->owner->eclass && NodClass_Registered( b->owner->eclass->comments ) )
+		const bool nativeGeometry = NodSurface_IsProfile( g_pGameDescription->mGameFile ) || ( b->owner && ( ( b->owner->eclass && NodClass_Registered( b->owner->eclass->comments ) )
 			|| NodEntity_IsPoint( ValueForKey( b->owner, "classname" ) )
 			|| NodEntity_IsUVBrush( ValueForKey( b->owner, "classname" ), ValueForKey( b->owner, "nod_id" ),
-				ValueForKey( b->owner, "nod_uv_mapping" ) ) );
+				ValueForKey( b->owner, "nod_uv_mapping" ) ) ) );
 		if ( !b->brush_faces || ( g_PrefsDlg.m_bCleanTiny && !nativeGeometry
 			&& CheckForTinyBrush( b, n++, g_PrefsDlg.m_fTinySize ) ) ) {
 			Brush_Free( b );

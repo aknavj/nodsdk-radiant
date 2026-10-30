@@ -8,7 +8,7 @@ StaRev - Starcraft Ghost reversed
 This file is part of the StaRev source code.
 
 File: brush.cpp
-Version: 0.6.7
+Version: 0.6.8
 
 StaRev is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3
@@ -54,6 +54,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "filters.h"
 #include "nodbounds.h"
 #include "nodview.h"
+#include "nodsurface.h"
 
 extern MainFrame* g_pParentWnd;
 
@@ -279,7 +280,7 @@ void Face_SetShader( face_t *face, const char *name ){
 	face->pShader = QERApp_Shader_ForName( name );
 	face->pShader->IncRef();
 	face->d_texture = face->pShader->getTexture();
-	face->texdef.flags = face->pShader->getFlags();
+	face->texdef.flags = NodSurface_ShaderFlags( g_pGameDescription->mGameFile, face->pShader->getFlags() );
 }
 
 void Face_SetShader( face_t *face, IShader *shader ){
@@ -289,7 +290,7 @@ void Face_SetShader( face_t *face, IShader *shader ){
 
 	face->texdef.SetName( shader->getName() );
 	face->d_texture = shader->getTexture();
-	face->texdef.flags = shader->getFlags();
+	face->texdef.flags = NodSurface_ShaderFlags( g_pGameDescription->mGameFile, shader->getFlags() );
 	face->pShader = shader;
 	face->pShader->IncRef();
 }
@@ -827,9 +828,9 @@ winding_t *Brush_MakeFaceWinding( brush_t *b, face_t *face ){
 	face_t      *clip;
 	plane_t plane;
 	qboolean past;
-	const bool nativeFallback = b->owner && NodEntity_IsUVBrush(
+	const bool nativeFallback = NodSurface_IsProfile( g_pGameDescription->mGameFile ) || ( b->owner && NodEntity_IsUVBrush(
 		ValueForKey( b->owner, "classname" ), ValueForKey( b->owner, "nod_id" ),
-		ValueForKey( b->owner, "nod_uv_mapping" ) );
+		ValueForKey( b->owner, "nod_uv_mapping" ) ) );
 
 	// get a poly that covers an effectively infinite area
 	w = Winding_BaseForPlane( &face->plane );
@@ -884,7 +885,7 @@ void Brush_SnapPlanepts( brush_t *b ){
 	int i, j;
 	face_t  *f;
 
-	if ( g_PrefsDlg.m_bNoClamp || ( b->owner
+	if ( NodSurface_IsProfile( g_pGameDescription->mGameFile ) || g_PrefsDlg.m_bNoClamp || ( b->owner
 		&& ( ( b->owner->eclass && NodClass_Registered( b->owner->eclass->comments ) )
 		|| NodEntity_IsPoint( ValueForKey( b->owner, "classname" ) )
 		|| NodEntity_IsUVBrush( ValueForKey( b->owner, "classname" ), ValueForKey( b->owner, "nod_id" ),

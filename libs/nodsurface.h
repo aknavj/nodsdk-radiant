@@ -8,7 +8,7 @@ StaRev - Starcraft Ghost reversed
 This file is part of the StaRev source code.
 
 File: nodsurface.h
-Version: 0.6.7
+Version: 0.6.8
 
 StaRev is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3
@@ -60,6 +60,11 @@ struct NodSurfacePreset
  */
 inline bool NodSurface_IsProfile( const char *gameFile ){
 	return gameFile && strcmp( gameFile, "scghost.game" ) == 0;
+}
+
+inline int NodSurface_ShaderFlags( const char *gameFile, int editorFlags ){
+	// NOD preview flags belong to IShader, not the native MAP authoring fields.
+	return NodSurface_IsProfile( gameFile ) ? 0 : editorFlags;
 }
 
 /*
