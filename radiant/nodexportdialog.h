@@ -8,7 +8,7 @@ StaRev - Starcraft Ghost reversed
 This file is part of the StaRev source code.
 
 File: nodexportdialog.h
-Version: 0.6.7
+Version: 0.6.8
 
 StaRev is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3
@@ -28,6 +28,8 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #define RADIANT_NODEXPORTDIALOG_H
 
 #include "nodcompile.h"
+#include <cerrno>
+#include <limits>
 
 struct NodExportColor {
 	GtkWidget *rgb[3], *button;
@@ -57,6 +59,7 @@ struct NodExportDialog {
 	GtkWidget *panel, *geometry, *lighting, *objects, *pathing, *oversample, *shadows;
 	GtkWidget *spacingOverride, *spacing, *resolution, *phong, *sun, *ambient, *sunIntensity, *ambientIntensity;
 	GtkWidget *direction[3], *lightingBody, *sunBody, *ambientBody;
+	GtkWidget *physicsMarginOverride, *physicsMargin;
 	NodExportColor sunColor, ambientColor;
 	bool adjustingResolution = false;
 	static void Resolution( GtkRange *range, gpointer data ){
@@ -136,6 +139,11 @@ struct NodExportDialog {
 	}
 
 	void Sensitivity(){
+		const bool nil = gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( geometry ) ) ||
+			gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( lighting ) );
+		gtk_widget_set_sensitive( physicsMarginOverride, nil );
+		gtk_widget_set_sensitive( physicsMargin, nil &&
+			gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( physicsMarginOverride ) ) );
 		const bool enabled = gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( lighting ) ) != FALSE;
 		gtk_widget_set_sensitive( lightingBody, enabled );
 		gtk_widget_set_sensitive( spacing, gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( spacingOverride ) ) );
@@ -183,6 +191,11 @@ struct NodExportDialog {
 		GtkWidget *note = gtk_label_new( _( "Current native compiler: one sector, unified brush collision." ) );
 		gtk_misc_set_alignment( GTK_MISC( note ), 0, 0.5 );
 		gtk_box_pack_start( GTK_BOX( geo ), note, FALSE, FALSE, 0 );
+		physicsMarginOverride = Check( geo, _( "Override automatic physics margin" ) );
+		physicsMargin = gtk_entry_new();
+		gtk_entry_set_width_chars( GTK_ENTRY( physicsMargin ), 12 );
+		gtk_box_pack_start( GTK_BOX( Row( geo, _( "Physics margin" ) ) ), physicsMargin, FALSE, FALSE, 0 );
+		gtk_widget_set_tooltip_text( physicsMargin, _( "Positive padding on all six sides of automatic collision bounds, in MAP units. Default: 1. Requires updated MAPtoNIL. Does not fix embedded collision starts or player placement." ) );
 		pathing = Check( geo, _( "Pathing info (NPD)" ) );
 		GtkWidget *light = Box( left, _( "Lighting" ) );
 		lighting = Check( light, _( "Compute lighting (rebuilds NIL)" ) );
@@ -229,7 +242,7 @@ struct NodExportDialog {
 			g_signal_connect( button, "clicked", G_CALLBACK( Preset ), this );
 		}
 
-		GtkWidget *toggles[] = { lighting, spacingOverride, sun, ambient };
+		GtkWidget *toggles[] = { geometry, lighting, spacingOverride, sun, ambient, physicsMarginOverride };
 		for ( size_t i = 0; i != G_N_ELEMENTS( toggles ); ++i ) {
 			g_signal_connect( toggles[i], "toggled", G_CALLBACK( Toggle ), this );
 		}
@@ -239,6 +252,8 @@ struct NodExportDialog {
 
 	void Load( const NodCompileOptions &options ){
 		gtk_entry_set_text( GTK_ENTRY( mapName ), options.mapName.c_str() );
+		gtk_toggle_button_set_active( GTK_TOGGLE_BUTTON( physicsMarginOverride ), options.physicsMarginOverride );
+		gtk_entry_set_text( GTK_ENTRY( physicsMargin ), NodCompile_Number( options.physicsMargin ).c_str() );
 		GtkWidget *checks[] = { geometry, objects, pathing, lighting, oversample, shadows, spacingOverride, sun, ambient };
 		const bool values[] = { options.geometry, options.objects, options.pathing, options.lighting, options.oversample,
 			options.shadows, options.spacingOverride, options.sun, options.ambient };
@@ -261,6 +276,14 @@ struct NodExportDialog {
 
 	void Read( NodCompileOptions &options ){
 		options.mapName = gtk_entry_get_text( GTK_ENTRY( mapName ) );
+		options.physicsMarginOverride = gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( physicsMarginOverride ) ) != FALSE;
+		const char *margin = gtk_entry_get_text( GTK_ENTRY( physicsMargin ) );
+		char *end = NULL;
+		errno = 0;
+		options.physicsMargin = g_ascii_strtod( margin, &end );
+		if ( end == margin || *end || errno == ERANGE ) {
+			options.physicsMargin = std::numeric_limits<double>::quiet_NaN();
+		}
 		GtkWidget *checks[] = { geometry, objects, pathing, lighting, oversample, shadows, spacingOverride, sun, ambient };
 		bool *values[] = { &options.geometry, &options.objects, &options.pathing, &options.lighting, &options.oversample,
 			&options.shadows, &options.spacingOverride, &options.sun, &options.ambient };

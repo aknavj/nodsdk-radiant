@@ -1,5 +1,21 @@
 /*QUAKED worldspawn (0.5 0.5 0.5) ?
-MAP brush container, not an NSD type. Native level export unsupported.
+MAP brush container; MAPtoNIL compiles brush geometry and collision.
+Scene environment is exported by MAPtoNSD; updated SDK required.
+Use Entities > Map resources and metadata > Scene environment to edit these keys.
+"nod_light_spacing" - Lighting sample spacing in MAP units; default 4.
+"nod_music" - Optional audio filename; at most 31 ASCII bytes, no paths.
+"nod_ambient_loop" - Optional ambient-loop filename; at most 31 ASCII bytes, no paths.
+"nod_sky_model" - Optional .nod filename; at most 31 ASCII bytes, no paths.
+"nod_sky_animation" - Optional .nad filename; independent of sky model.
+"nod_fog_mode" - none or linear; omitted means none.
+"nod_fog_color" - Linear fog RGB in 0..255, not 0..1.
+"nod_fog_start" - Linear fog start distance in MAP units; nonnegative.
+"nod_fog_end" - Linear fog end; greater than start after float32 rounding.
+"nod_far_clip" - Nonnegative camera distance in MAP units; 0/omitted uses native default.
+"nod_reverb" - Native preset ID 0..25; canonical decimal, no named aliases.
+Linear fog requires color/start/end together; omit them for none.
+References do not deploy assets or guarantee playback/rendering.
+Unverified NSD volume/effects controls are not supported.
 */
 
 /*QUAKED ghost (0.2 0.8 1.0) (-16 -16 -24) (16 16 40)

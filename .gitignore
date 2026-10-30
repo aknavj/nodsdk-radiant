@@ -4,6 +4,7 @@
 # Build outputs
 /apple/target/*
 /build
+/dist/
 /.scghost-build/
 /install
 /packs

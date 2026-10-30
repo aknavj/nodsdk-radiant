@@ -8,7 +8,7 @@ StaRev - Starcraft Ghost reversed
 This file is part of the StaRev source code.
 
 File: nodcompile.h
-Version: 0.6.7
+Version: 0.6.8
 
 StaRev is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3
@@ -32,6 +32,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include <functional>
 #include <array>
 #include <cmath>
+#include <cfloat>
 #include <glib.h>
 #include <glib/gstdio.h>
 #ifdef _WIN32
@@ -46,6 +47,8 @@ struct NodCompileOptions {
 	bool geometry = true, objects = true, pathing = true, lighting = true;
 	bool oversample = false, shadows = true, spacingOverride = false, sun = false, ambient = false;
 	double spacing = 4, phong = 0, sunIntensity = 1, ambientIntensity = 0.35;
+	bool physicsMarginOverride = false;
+	double physicsMargin = 1;
 	std::array<double, 3> sunColor{{1, 1, 1}}, ambientColor{{1, 1, 1}}, sunDirection{{-1, 2, -4}};
 	bool exports( int index ) const {
 		return index == 0 ? geometry || lighting : index == 1 ? objects : pathing;
@@ -329,6 +332,12 @@ inline std::string NodCompile_Validate( const NodCompileOptions &options ){
 		return "Override Map Name must be a filename stem without .map/.nil/.nsd/.npd, folders, reserved filename characters or device names, or surrounding whitespace (maximum 251 UTF-8 bytes). Leave it blank to use the MAP filename.";
 	}
 
+	if ( options.exports( 0 ) && options.physicsMarginOverride &&
+		( !std::isfinite( options.physicsMargin ) || options.physicsMargin <= 0 ||
+		options.physicsMargin > FLT_MAX || static_cast<float>( options.physicsMargin ) == 0 ) ) {
+		return "Physics margin must be a positive finite float32 distance in MAP units.";
+	}
+
 	if ( options.lighting ) {
 		if ( !std::isfinite( options.spacing ) || options.spacing < 0.01 || options.spacing > 1024 ||
 			 !std::isfinite( options.phong ) || options.phong < 0 || options.phong > 180 ) {
@@ -463,6 +472,10 @@ inline bool NodCompile_Run( const NodCompileOptions &options,
 		if ( i == 0 ) {
 			const auto lighting = NodCompile_LightingArguments( options );
 			arguments.insert( arguments.end(), lighting.begin(), lighting.end() );
+			if ( options.physicsMarginOverride ) {
+				arguments.push_back( "--physics-margin" );
+				arguments.push_back( NodCompile_Number( options.physicsMargin ) );
+			}
 		}
 
 		arguments.push_back( snapshot ); arguments.push_back( staged[i] );

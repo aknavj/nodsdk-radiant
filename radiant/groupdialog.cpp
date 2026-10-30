@@ -8,7 +8,7 @@ StaRev - Starcraft Ghost reversed
 This file is part of the StaRev source code.
 
 File: groupdialog.cpp
-Version: 0.6.7
+Version: 0.6.8
 
 StaRev is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3
@@ -63,6 +63,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "groupdialog.h"
 #include "modeltransform.h"
 #include "nodproperties.h"
+#include "nodenvironmentdialog.h"
 #include "nodinspectorview.h"
 #include "nodtemplates.h"
 #include "nodtemplateplacement.h"
@@ -2602,6 +2603,69 @@ static void NodInspector_PickModel( GtkWidget *, gpointer ){
 	gtk_widget_destroy( window );
 }
 
+static NodEnvironmentValues NodInspector_EnvironmentValues(){
+	NodEnvironmentValues values;
+	for ( const auto &field : NodEnvironment_Fields() ) {
+		if ( world_entity && NodInspector_HasKey( world_entity, field.key ) ) {
+			values[field.key] = ValueForKey( world_entity, field.key );
+		}
+	}
+
+	return values;
+}
+
+static void NodInspector_Environment( GtkWidget *, gpointer ){
+	if ( !world_entity || NodInspector_HasKey( world_entity, "nod_reference" ) ||
+		NodInspector_HasKey( world_entity, "nod_id" ) ) {
+		const char *error = _( "Open an authoring MAP to edit its scene environment. Source-bound previews remain read-only." );
+		Sys_FPrintf( SYS_WRN, "NOD environment: %s\n", error );
+		gtk_MessageBox( g_pGroupDlg->m_pWidget, error, _( "Environment not changed" ), MB_OK );
+		return;
+	}
+
+	entity_t *world = world_entity;
+	const NodEnvironmentValues original = NodInspector_EnvironmentValues();
+	NodEnvironmentDialog ui;
+	GtkWidget *dialog = ui.Create( g_pGroupDlg->m_pWidget, original );
+	while ( gtk_dialog_run( GTK_DIALOG( dialog ) ) == GTK_RESPONSE_ACCEPT ) {
+		const NodEnvironmentValues values = ui.Read();
+		std::string error = NodEnvironment_Validate( values );
+		if ( world != world_entity || original != NodInspector_EnvironmentValues() ) {
+			error = _( "The map or environment changed. Close and reopen this dialog." );
+		}
+
+		if ( !error.empty() ) {
+			Sys_FPrintf( SYS_WRN, "NOD environment: %s\n", error.c_str() );
+			gtk_MessageBox( dialog, error.c_str(), _( "Environment not changed" ), MB_OK );
+			continue;
+		}
+
+		if ( values != original ) {
+			Undo_Start( "change NOD scene environment" );
+			Undo_AddEntity( world );
+			for ( const auto &field : NodEnvironment_Fields() ) {
+				const auto found = values.find( field.key );
+				if ( found == values.end() ) {
+					DeleteKey( world, field.key );
+				}
+				else {
+					SetKeyValue( world, field.key, found->second.c_str() );
+				}
+			}
+
+			Undo_EndEntity( world );
+			Undo_End();
+			Sys_MarkMapModified();
+			SetKeyValuePairs();
+			Sys_UpdateWindows( W_ALL );
+		}
+
+		break;
+	}
+
+	gtk_widget_destroy( dialog );
+}
+
 static void NodInspector_SetModelBundle( GtkWidget *, gpointer ){
 	const std::string input = gtk_entry_get_text( GTK_ENTRY( nodModelBundle ) );
 	std::string error;
@@ -2715,6 +2779,9 @@ void GroupDlg::Create(){
 				gtk_box_pack_start( GTK_BOX( bundle ), setBundle, FALSE, FALSE, 0 );
 				g_signal_connect( G_OBJECT( setBundle ), "clicked", G_CALLBACK( NodInspector_SetModelBundle ), NULL );
 				gtk_widget_show_all( bundle );
+				GtkWidget *environment = gtk_button_new_with_label( _( "Scene environment..." ) );
+				gtk_box_pack_start( GTK_BOX( resources ), environment, FALSE, FALSE, 0 );
+				g_signal_connect( G_OBJECT( environment ), "clicked", G_CALLBACK( NodInspector_Environment ), NULL );
 				GtkWidget *reload = gtk_button_new_with_label( _( "Reload NOT metadata" ) );
 				gtk_box_pack_start( GTK_BOX( resources ), reload, FALSE, FALSE, 0 );
 				g_signal_connect( G_OBJECT( reload ), "clicked", G_CALLBACK( NodInspector_ReloadMetadata ), NULL );

@@ -8,7 +8,7 @@ StaRev - Starcraft Ghost reversed
 This file is part of the StaRev source code.
 
 File: xywindow.cpp
-Version: 0.6.7
+Version: 0.6.8
 
 StaRev is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3
@@ -56,6 +56,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "nodtemplateplacement.h"
 #include "nodpathplacement.h"
 #include "nodview.h"
+#include "nodsurface.h"
 #include "filters.h"
 #include <map>
 #include <gtk/gtk.h>
@@ -1951,7 +1952,7 @@ void XYWnd::NewBrushDrag( int x, int y ){
 		tex.SetName( shad->getName() );
 		tex.scale[0] = g_PrefsDlg.m_fDefTextureScale;
 		tex.scale[1] = g_PrefsDlg.m_fDefTextureScale;
-		tex.flags = shad->getFlags();
+		tex.flags = NodSurface_ShaderFlags( g_pGameDescription->mGameFile, shad->getFlags() );
 		
 		n = Brush_Create( mins, maxs, &tex );
 	} else {
