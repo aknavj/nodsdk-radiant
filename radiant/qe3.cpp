@@ -823,9 +823,8 @@ void ConnectEntities( void ){
 	if ( g_pGameDescription->mGameFile == SCGHOST_GAME &&
 		( NodScript_Class( ValueForKey( e1, "classname" ) ) ||
 			NodScript_Class( ValueForKey( e2, "classname" ) ) ||
-			strcmp( ValueForKey( e1, "nod_prop_15" ), "cTriggerOnAction" ) == 0 ||
-			strcmp( ValueForKey( e1, "nod_prop_15" ), "cButton" ) == 0 ||
-			strcmp( ValueForKey( e1, "nod_prop_15" ), "cTriggerRelay" ) == 0 ) ) {
+			NodScript_Behavior( ValueForKey( e1, "nod_prop_15" ) ) ||
+			NodScript_Behavior( ValueForKey( e2, "nod_prop_15" ) ) ) ) {
 		std::string error;
 		if ( !NodScript_Connect( e1, e2, error ) ) {
 			Sys_FPrintf( SYS_WRN, "Native control: %s\n", error.c_str() );

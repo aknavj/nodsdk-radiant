@@ -28,6 +28,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #define RADIANT_NODSCRIPT_H
 
 #include "nodproperties.h"
+#include "nodtemplates.h"
 #include <cstdlib>
 
 inline bool NodScript_Class( const char *name ){
@@ -42,11 +43,15 @@ inline bool NodScript_RelayField( const char *key ){
 		strcmp( index, "10" ) == 0 || strcmp( index, "11" ) == 0 );
 }
 
-inline const char *NodScript_ModelTemplate( const char *name ){
-	return strcmp( name, "nod_console" ) == 0 ? "hackConsole_wall_activate" : "";
+inline const char *NodScript_ModelTemplate( const char *name, const char *selected = "" ){
+	return strcmp( name, "nod_console" ) == 0 ? ( *selected ? selected : "hackConsole_wall_activate" ) : "";
 }
 
 inline bool NodScript_Field( const char *key ){
+	if ( strcmp( key, "nod_region_min" ) == 0 || strcmp( key, "nod_region_max" ) == 0 ) {
+		return true;
+	}
+
 	const char *suffix = strncmp( key, "nod_script_param_", 17 ) == 0 ? key + 17 :
 		strncmp( key, "nod_frame_origin_", 17 ) == 0 ? key + 17 :
 		strncmp( key, "nod_frame_rotation_", 19 ) == 0 ? key + 19 :
@@ -85,11 +90,18 @@ inline bool NodScript_Reference( const char *value ){
 	return true;
 }
 
+inline const NodBehavior *NodScript_Behavior( const char *script ){
+	const std::map<std::string, NodBehavior> &behaviors = NodClasses_Catalog().behaviors;
+	std::map<std::string, NodBehavior>::const_iterator found = behaviors.find( script );
+	return found == behaviors.end() ? NULL : &found->second;
+}
+
 inline const char *NodScript_Restriction( const char *name, const char *key, bool present, const char *script = "" ){
 	if ( NodScript_Class( name ) ) {
 		if ( strcmp( key, "origin" ) == 0 || strcmp( key, "angles" ) == 0 ||
 			strcmp( key, "targetname" ) == 0 ||
-			( strcmp( name, "nod_console" ) == 0 && strcmp( key, "target" ) == 0 ) ||
+			( strcmp( name, "nod_console" ) == 0 &&
+				( strcmp( key, "target" ) == 0 || strcmp( key, "nod_console_template" ) == 0 ) ) ||
 			( strcmp( name, "nod_sound_cue" ) == 0 && strcmp( key, "nod_cue" ) == 0 ) ||
 			( strcmp( name, "nod_trigger_relay" ) == 0 &&
 				( strcmp( key, "nod_relay_count" ) == 0 || NodScript_RelayField( key ) ) ) ||
@@ -101,12 +113,14 @@ inline const char *NodScript_Restriction( const char *name, const char *key, boo
 		return "Edit the preset's position, rotation, target or supported settings only.";
 	}
 
-	if ( strncmp( key, "nod_script_param_", 17 ) == 0 ) {
-		const unsigned parameter = static_cast<unsigned>( strtoul( key + 17, NULL, 10 ) );
-		if ( ( strcmp( script, "cDoorMove" ) == 0 && parameter != 1 ) ||
-			( strcmp( script, "cButton" ) == 0 && parameter >= 8 && parameter != 12 && parameter != 13 ) ) {
-			return "This native setting is fixed for the verified model/button workflow.";
+	if ( *script ) {
+		const NodBehavior *behavior = NodScript_Behavior( script );
+		if ( !behavior ) {
+			return "Reload the NOT catalog with the updated SDK to edit this handler.";
 		}
+
+		return present && behavior->Field( key, "editable" ) == "1" ? NULL :
+			"This native schema field is read-only.";
 	}
 
 	return present && NodScript_Field( key ) ? NULL : "Script schema and source identities are read-only.";
@@ -114,44 +128,20 @@ inline const char *NodScript_Restriction( const char *name, const char *key, boo
 
 inline NodPropertyInfo NodScript_FieldInfo( const char *key, const char *kind, const char *script = "" ){
 	NodPropertyInfo info;
+	const NodBehavior *behavior = NodScript_Behavior( script );
+	if ( behavior && behavior->fields.count( key ) ) {
+		info.name = behavior->Field( key, "label" );
+		info.storage = behavior->Field( key, "storage" );
+		return info;
+	}
+
 	if ( strncmp( key, "nod_script_param_", 17 ) == 0 ) {
 		info.name = "Script parameter " + std::string( key + 17 );
 		info.storage = strcmp( kind, "1" ) == 0 ? "uint32 bits" : strcmp( kind, "2" ) == 0 ? "float32" :
 			strcmp( kind, "3" ) == 0 ? "object reference" : strcmp( kind, "7" ) == 0 ? "string" : "raw";
-		if ( strcmp( script, "cSoundStinger" ) == 0 && strcmp( key + 17, "6" ) == 0 ) {
-			info.name = "Sound cue";
-		} else if ( strcmp( script, "cTriggerOnAction" ) == 0 &&
-			( strcmp( key + 17, "16" ) == 0 || strcmp( key + 17, "18" ) == 0 ||
-				strcmp( key + 17, "20" ) == 0 || strcmp( key + 17, "22" ) == 0 ) ) {
-			info.name = "Console linked target " + std::string( key + 17 );
-		} else if ( strcmp( script, "cAIFightPath" ) == 0 && strcmp( key + 17, "2" ) == 0 ) {
-			info.name = "Enemy template";
-		} else if ( strcmp( script, "cAIFightPath" ) == 0 && strcmp( key + 17, "3" ) == 0 ) {
-			info.name = "Lifetime spawn limit";
-		} else if ( strcmp( script, "cTriggerRelay" ) == 0 && NodScript_Field( key ) ) {
-			const unsigned parameter = static_cast<unsigned>( strtoul( key + 17, NULL, 10 ) );
-			const char *labels[] = { "Relay target ", "Relay delay (seconds) ", "Relay trigger data " };
-			info.name = labels[parameter % 3] + std::to_string( parameter / 3 + 1 );
-		} else if ( strcmp( script, "cDoorMove" ) == 0 && strcmp( key + 17, "1" ) == 0 ) {
-			info.name = "Mover speed (world units/second)";
-		} else if ( strcmp( script, "cButton" ) == 0 ) {
-			const unsigned parameter = static_cast<unsigned>( strtoul( key + 17, NULL, 10 ) );
-			if ( parameter < 8 ) {
-				info.name = "Button linked target " + std::to_string( parameter + 1 );
-			} else if ( parameter == 12 ) {
-				info.name = "Button one-shot (0/1)";
-			} else if ( parameter == 13 ) {
-				info.name = "Button initially locked (0/1)";
-			}
-		}
 	} else if ( strncmp( key, "nod_frame_origin_", 17 ) == 0 ) {
 		info.name = "Frame position " + std::string( key + 17 );
 		info.storage = "vector3";
-		if ( strcmp( script, "cAIFightPath" ) == 0 && strcmp( key + 17, "1" ) == 0 ) {
-			info.name = "Spawn path destination";
-		} else if ( strcmp( script, "cDoorMove" ) == 0 ) {
-			info.name = strcmp( key + 17, "0" ) == 0 ? "Mover stop 0 (closed / lower)" : "Mover stop 1 (open / upper)";
-		}
 	} else if ( strncmp( key, "nod_frame_rotation_", 19 ) == 0 ) {
 		info.name = "Frame native rotation " + std::string( key + 19 );
 		info.storage = "vector3";
@@ -164,19 +154,20 @@ inline NodPropertyInfo NodScript_FieldInfo( const char *key, const char *kind, c
 }
 
 inline const char *NodScript_Validate( const char *key, const char *value, const char *kind, const char *name = "",
-	const char *script = "" ){
-	if ( strcmp( script, "cDoorMove" ) == 0 && strcmp( key, "nod_script_param_1" ) == 0 ) {
-		float speed[3];
-		return ModelTransform_Parse( value, 1, speed, true ) && speed[0] > 0 ?
-			NULL : "Enter a finite positive mover speed in world units/second.";
-	}
-
-	if ( strcmp( script, "cButton" ) == 0 &&
-		( strcmp( key, "nod_script_param_12" ) == 0 || strcmp( key, "nod_script_param_13" ) == 0 ) ) {
-		return strcmp( value, "0" ) == 0 || strcmp( value, "1" ) == 0 ? NULL : "Enter 0 or 1.";
+	const char *script = "", const NodTemplateCatalog *context = NULL ){
+	const NodBehavior *behavior = NodScript_Behavior( script );
+	if ( behavior && ( !behavior->Field( key, "min" ).empty() || !behavior->Field( key, "max" ).empty() ) ) {
+		float number[3], minimum[3], maximum[3];
+		if ( !ModelTransform_Parse( value, 1, number, true ) ||
+			( ModelTransform_Parse( behavior->Field( key, "min" ).c_str(), 1, minimum, true ) &&
+				( behavior->Field( key, "exclusive-min" ) == "1" ? number[0] <= minimum[0] : number[0] < minimum[0] ) ) ||
+			( ModelTransform_Parse( behavior->Field( key, "max" ).c_str(), 1, maximum, true ) && number[0] > maximum[0] ) ) {
+			return "Value is outside the SDK behavior's permitted numeric range.";
+		}
 	}
 
 	if ( strcmp( key, "origin" ) == 0 || strcmp( key, "angles" ) == 0 ||
+		( behavior && behavior->Field( key, "storage" ) == "vector3" ) ||
 		strcmp( key, "nod_destination" ) == 0 || strncmp( key, "nod_frame_origin_", 17 ) == 0 ||
 		strncmp( key, "nod_frame_rotation_", 19 ) == 0 ) {
 		float vector[3];
@@ -207,9 +198,26 @@ inline const char *NodScript_Validate( const char *key, const char *value, const
 			NULL : "Enter a canonical action count from 1 through 12.";
 	}
 
-	if ( strcmp( key, "nod_enemy" ) == 0 ) {
-		return strcmp( value, "hydralisk" ) == 0 || strcmp( value, "zealot" ) == 0 ||
-			strcmp( value, "Marine" ) == 0 ? NULL : "Choose hydralisk, zealot or Marine (case-sensitive).";
+	if ( strcmp( key, "nod_enemy" ) == 0 || ( behavior && behavior->Field( key, "resource" ) == "actor" ) ) {
+		const NodTemplateCatalog &catalog = context ? *context : NodClasses_Catalog();
+		for ( size_t i = 0; i < catalog.choices.size(); ++i ) {
+			if ( catalog.choices[i].name == value && catalog.choices[i].spawnable ) {
+				return NULL;
+			}
+		}
+
+		return "Choose a modeled AI actor from the active NOT catalog (exact spelling).";
+	}
+
+	if ( strcmp( key, "nod_console_template" ) == 0 ) {
+		const NodTemplateCatalog &catalog = context ? *context : NodClasses_Catalog();
+		for ( size_t i = 0; i < catalog.choices.size(); ++i ) {
+			if ( catalog.choices[i].name == value && catalog.choices[i].handlers.count( "cTriggerOnAction" ) ) {
+				return NULL;
+			}
+		}
+
+		return "Choose an interactive modeled prop from the active NOT catalog.";
 	}
 
 	if ( strcmp( key, "nod_max_spawns" ) == 0 ) {
@@ -221,7 +229,7 @@ inline const char *NodScript_Validate( const char *key, const char *value, const
 		return number >= 1 && number <= 25 ? NULL : "Enter a lifetime spawn limit from 1 through 25.";
 	}
 
-	if ( strcmp( key, "nod_cue" ) == 0 ) {
+	if ( strcmp( key, "nod_cue" ) == 0 || ( behavior && behavior->Field( key, "resource" ) == "cue" ) ) {
 		if ( !NodScript_Reference( value ) || strlen( value ) > 31 || strchr( value, ':' ) ||
 			value[0] == '.' || value[strlen( value ) - 1] == '.' ) {
 			return "Enter a cue in the deployed level bank: 1..31 ASCII letters/digits/underscore/hyphen/dot, without a path.";

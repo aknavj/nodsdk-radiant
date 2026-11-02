@@ -561,6 +561,11 @@ inline bool NodCompile_Run( const NodCompileOptions &options,
 		} else {
 			std::vector<std::string> arguments{ NodCompile_Tool( options.tools, 4 ), "--workspace", options.workspace,
 				"--source-name", options.script, scriptSnapshot, snapshot, expandedSnapshot };
+			if ( !options.sourceBacked ) {
+				arguments.push_back( "--asset-root" );
+				arguments.push_back( options.assets );
+			}
+
 			ok = NodCompile_Execute( options, arguments, log, error );
 			if ( ok && !g_file_test( expandedSnapshot.c_str(), G_FILE_TEST_IS_REGULAR ) ) {
 				ok = false;
@@ -664,12 +669,12 @@ inline bool NodCompile_Run( const NodCompileOptions &options,
 
 			if ( saved[i] && g_rename( backup[i].c_str(), final[i].c_str() ) != 0 ) {
 				restored = false;
-		}
+			}
 		}
 
 		if ( !restored ) {
 			error += "\nRollback incomplete. Recover previous files from: " + stage;
-	}
+		}
 	}
 
 	if ( restored ) {
@@ -692,14 +697,14 @@ inline bool NodCompile_Run( const NodCompileOptions &options,
 
 		if ( !clean ) {
 			log( "\nWarning: could not fully remove staging folder: " + stage + "\n" );
-	}
+		}
 	}
 
 	if ( ok ) {
 		for ( int i = 0; i != 3; ++i ) {
 			if ( options.exports( i ) ) {
 				log( "\nWrote " + final[i] + "\n" );
-	}
+			}
 		}
 	}
 

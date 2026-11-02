@@ -52,6 +52,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "filters.h"
 #include "groupdialog.h"
 #include "modeltransform.h"
+#include "nodtemplates.h"
 
 // externs
 CPtrArray g_SelectedFaces;
@@ -782,10 +783,7 @@ void Select_ApplyMatrix( bool bSnap, bool bRotation, int nAxis, float fDeg ){ //
 			}
 
 			// update the origin key
-			char text[64];
-			sprintf( text, "%i %i %i",
-					 (int)b->owner->origin[0], (int)b->owner->origin[1], (int)b->owner->origin[2] );
-			SetKeyValue( b->owner, "origin", text );
+			SetKeyValue( b->owner, "origin", NodTemplate_FormatPosition( b->owner->origin ).c_str() );
 
 			/*\todo remove brush-based bounding box for fixedsize entities */
 			VectorSubtract( b->owner->origin, tmporigin, temp );

@@ -67,7 +67,13 @@ inline bool NodScript_SetHandler( entity_t *entity, const NodTemplateChoice &cho
 	}
 
 	vec3_t rotation = { 0, 0, 0 };
-	if ( handler == "cDoorMove" ) {
+	const NodBehavior *behavior = handler.empty() ? NULL : NodScript_Behavior( handler.c_str() );
+	if ( !handler.empty() && !behavior ) {
+		error = "Reload the NOT catalog with the updated SDK behavior metadata.";
+		return false;
+	}
+
+	if ( behavior && behavior->Get( "frame-orientation" ) == "owner" ) {
 		vec3_t angles;
 		if ( !ModelTransform_Parse( ValueForKey( entity, "angles" ), 3, angles, true ) ) {
 			error = "The mover needs finite editor angles before initializing its frames.";
@@ -103,12 +109,17 @@ inline bool NodScript_SetHandler( entity_t *entity, const NodTemplateChoice &cho
 		for ( unsigned i = 0; i < strtoul( fields["nod_frame_count"].c_str(), NULL, 10 ); ++i ) {
 			vec3_t destination;
 			VectorCopy( position, destination );
-			if ( i == 1 ) {
-				destination[handler == "cDoorMove" && choice.name == "floatingPlatform" ? 2 : 1] += 2;
+			vec3_t step = { 0, 0, 0 };
+			if ( behavior && !behavior->Get( "frame-step" ).empty() ) {
+				ModelTransform_Parse( behavior->Get( "frame-step" ).c_str(), 3, step, true );
+			}
+
+			for ( unsigned axis = 0; axis < 3; ++axis ) {
+				destination[axis] += step[axis] * i;
 			}
 
 			fields["nod_frame_origin_" + std::to_string( i )] = NodTemplate_FormatPosition( destination );
-			if ( handler == "cDoorMove" ) {
+			if ( behavior && behavior->Get( "frame-orientation" ) == "owner" ) {
 				fields["nod_frame_rotation_" + std::to_string( i )] = NodTemplate_FormatPosition( rotation );
 			}
 		}
@@ -174,6 +185,7 @@ inline entity_t *NodScript_Create( const char *name, const vec3_t position, std:
 	keys.push_back( std::make_pair( "targetname", target ) );
 	if ( strcmp( name, "nod_console" ) == 0 ) {
 		keys.push_back( std::make_pair( "target", "" ) );
+		keys.push_back( std::make_pair( "nod_console_template", NodScript_ModelTemplate( name ) ) );
 	} else if ( strcmp( name, "nod_sound_cue" ) == 0 ) {
 		keys.push_back( std::make_pair( "nod_cue", "" ) );
 	} else if ( strcmp( name, "nod_trigger_relay" ) == 0 ) {
@@ -184,7 +196,7 @@ inline entity_t *NodScript_Create( const char *name, const vec3_t position, std:
 		vec3_t destination;
 		VectorCopy( position, destination );
 		destination[1] += 2;
-		keys.push_back( std::make_pair( "nod_enemy", "Marine" ) );
+		keys.push_back( std::make_pair( "nod_enemy", "" ) );
 		keys.push_back( std::make_pair( "nod_max_spawns", "25" ) );
 		keys.push_back( std::make_pair( "nod_destination", NodTemplate_FormatPosition( destination ) ) );
 	}
@@ -195,28 +207,30 @@ inline entity_t *NodScript_Create( const char *name, const vec3_t position, std:
 inline bool NodScript_Connect( entity_t *from, entity_t *to, std::string &error ){
 	error.clear();
 	const bool preset = strcmp( ValueForKey( from, "classname" ), "nod_console" ) == 0;
-	const bool imported = strcmp( ValueForKey( from, "nod_prop_15" ), "cTriggerOnAction" ) == 0 &&
-		( strncmp( ValueForKey( from, "nod_id" ), "nsd:", 4 ) == 0 || NodScript_Template( from ) );
-	const bool relay = strcmp( ValueForKey( from, "nod_prop_15" ), "cTriggerRelay" ) == 0 &&
-		( strncmp( ValueForKey( from, "nod_id" ), "nsd:", 4 ) == 0 || NodScript_Template( from ) );
-	const bool button = strcmp( ValueForKey( from, "nod_prop_15" ), "cButton" ) == 0 &&
-		NodScript_Template( from ) && strcmp( ValueForKey( from, "nod_template" ), "button_wall_activate" ) == 0;
-	if ( from == to || ( !preset && !imported && !relay && !button ) ) {
-		error = "Select a native console, wall button or relay first, then a cue, relay, model mover or spawn control.";
+	const NodBehavior *source = NodScript_Behavior( ValueForKey( from, "nod_prop_15" ) );
+	if ( from == to || ( !preset && ( !source || source->Get( "first" ).empty() ||
+		( !NodScript_Template( from ) && strncmp( ValueForKey( from, "nod_id" ), "nsd:", 4 ) != 0 ) ) ) ) {
+		error = "Select a native output handler first, then a compatible input handler. Reload NOT metadata if unavailable.";
 		return false;
 	}
 
-	const bool ai = strcmp( ValueForKey( to, "nod_prop_15" ), "cAIFightPath" ) == 0;
+	const NodBehavior *receiver = NodScript_Behavior( ValueForKey( to, "nod_prop_15" ) );
+	bool pulse = false;
 	const char *target = ValueForKey( to, "targetname" );
 	if ( strcmp( ValueForKey( to, "classname" ), "nod_sound_cue" ) != 0 &&
 		strcmp( ValueForKey( to, "classname" ), "nod_enemy_spawn" ) != 0 &&
 		strcmp( ValueForKey( to, "classname" ), "nod_trigger_relay" ) != 0 ) {
-		const char *script = ValueForKey( to, "nod_prop_15" );
 		target = ValueForKey( to, NodScript_Template( to ) ? "targetname" : "nod_id" );
 		if ( ( !NodScript_Template( to ) && strncmp( target, "nsd:", 4 ) != 0 ) ||
-			( strcmp( script, "cSoundStinger" ) != 0 && strcmp( script, "cTriggerRelay" ) != 0 &&
-				strcmp( script, "cDoorMove" ) != 0 && !( relay && ai ) ) ) {
-			error = "The receiver must be a sound cue, relay or model mover; AI paths require a relay pulse.";
+			!receiver || ( receiver->Get( "input" ) != "trigger" && receiver->Get( "input" ) != "pulse" ) ) {
+			error = "The receiver has no supported native trigger input in the SDK metadata.";
+			return false;
+		}
+
+		pulse = receiver->Get( "input" ) == "pulse";
+		if ( pulse && ( preset || !source || source->Get( "data" ).empty() || source->Get( "delay" ).empty() ||
+			source->Get( "start" ).empty() || source->Get( "stop" ).empty() || source->Get( "pulse-delay" ).empty() ) ) {
+			error = "This receiver needs a start/stop pulse; connect it through a native pulse-capable relay.";
 			return false;
 		}
 	}
@@ -226,65 +240,92 @@ inline bool NodScript_Connect( entity_t *from, entity_t *to, std::string &error 
 		return false;
 	}
 
-	if ( ( imported || relay || button ) && ( strcmp( ValueForKey( from, "nod_script_authoring" ), "parameters-v1" ) != 0 ||
-		strcmp( ValueForKey( from, relay || button ? "nod_script_kind_0" : "nod_script_kind_16" ), "3" ) != 0 ) ) {
+	if ( !preset && strcmp( ValueForKey( from, "nod_script_authoring" ), "parameters-v1" ) != 0 ) {
 		error = "Re-export this scene with the updated NODscene export-properties to edit its script links.";
 		return false;
 	}
 
+	const unsigned first = preset ? 0 : static_cast<unsigned>( strtoul( source->Get( "first" ).c_str(), NULL, 10 ) );
+	const unsigned stride = preset ? 1 : static_cast<unsigned>( strtoul( source->Get( "stride" ).c_str(), NULL, 10 ) );
+	const unsigned count = preset ? 1 : static_cast<unsigned>( strtoul( source->Get( "count" ).c_str(), NULL, 10 ) );
+	const unsigned actions = pulse ? 2 : 1;
 	unsigned slot = 0;
-	if ( button ) {
-		for ( ; slot < 8; ++slot ) {
-			const char *value = ValueForKey( from, ( "nod_script_param_" + std::to_string( slot ) ).c_str() );
-			if ( strcmp( value, target ) == 0 ) {
-				return true;
+	if ( !preset ) {
+		if ( actions == 1 && source->Get( "data" ).empty() ) {
+			for ( unsigned existing = 0; existing < count; ++existing ) {
+				const unsigned parameter = first + existing * stride;
+				if ( strcmp( ValueForKey( from, ( "nod_script_param_" + std::to_string( parameter ) ).c_str() ), target ) == 0 ) {
+					return true;
+				}
 			}
 		}
 
-		for ( slot = 0; slot < 8; ++slot ) {
-			const char *value = ValueForKey( from, ( "nod_script_param_" + std::to_string( slot ) ).c_str() );
-			if ( strcmp( value, "-2" ) == 0 || strcmp( value, "-1" ) == 0 ) {
-				break;
+		if ( source->Get( "replace" ) == "1" ) {
+			slot = 0;
+		} else {
+			for ( ; slot + actions <= count; ++slot ) {
+				bool available = true;
+				for ( unsigned action = 0; action < actions; ++action ) {
+					const unsigned parameter = first + ( slot + action ) * stride;
+					const char *value = ValueForKey( from, ( "nod_script_param_" + std::to_string( parameter ) ).c_str() );
+					available = available && ( strcmp( value, "-2" ) == 0 || strcmp( value, "-1" ) == 0 );
+				}
+
+				if ( available ) {
+					break;
+				}
 			}
 		}
 
-		if ( slot == 8 ) {
-			error = "The wall button already has eight linked targets.";
+		if ( slot + actions > count ) {
+			error = pulse ? "The source needs two consecutive free actions for a start/stop pulse." :
+				"The source has no free action slots.";
 			return false;
 		}
-	}
 
-	if ( relay ) {
-		for ( ; slot < 12; ++slot ) {
-			const char *value = ValueForKey( from, ( "nod_script_param_" + std::to_string( slot * 3 ) ).c_str() );
-			const char *next = slot < 11 ? ValueForKey( from, ( "nod_script_param_" + std::to_string( ( slot + 1 ) * 3 ) ).c_str() ) : "";
-			if ( ( strcmp( value, "-2" ) == 0 || strcmp( value, "-1" ) == 0 ) &&
-				( !ai || strcmp( next, "-2" ) == 0 || strcmp( next, "-1" ) == 0 ) ) {
-				break;
+		for ( unsigned action = 0; action < actions; ++action ) {
+			const unsigned parameter = first + ( slot + action ) * stride;
+			if ( strcmp( ValueForKey( from, ( "nod_script_kind_" + std::to_string( parameter ) ).c_str() ), "3" ) != 0 ) {
+				error = "Native target slot has a mismatched schema; re-export or reinitialize this handler.";
+				return false;
 			}
-		}
 
-		if ( slot == 12 ) {
-			error = ai ? "The relay needs two consecutive free actions for an AI start/stop pulse." :
-				"The relay already has twelve actions.";
-			return false;
+			const char *offsets[] = { "delay", "data" };
+			const char *kinds[] = { "2", "7" };
+			for ( unsigned i = 0; i < 2; ++i ) {
+				if ( source->Get( offsets[i] ).empty() ) {
+					continue;
+				}
+
+				const unsigned offset = static_cast<unsigned>( strtoul( source->Get( offsets[i] ).c_str(), NULL, 10 ) );
+				if ( strcmp( ValueForKey( from, ( "nod_script_kind_" + std::to_string( parameter + offset ) ).c_str() ), kinds[i] ) != 0 ) {
+					error = "Native action slot has a mismatched delay/data schema; re-export or reinitialize this handler.";
+					return false;
+				}
+			}
 		}
 	}
 
 	Undo_Start( "Connect native action" );
 	Undo_AddEntity( from );
-	if ( relay ) {
-		for ( unsigned action = 0; action < ( ai ? 2u : 1u ); ++action ) {
-			const unsigned parameter = ( slot + action ) * 3;
+	if ( !preset ) {
+		for ( unsigned action = 0; action < actions; ++action ) {
+			const unsigned parameter = first + ( slot + action ) * stride;
 			SetKeyValue( from, ( "nod_script_param_" + std::to_string( parameter ) ).c_str(), target );
-			SetKeyValue( from, ( "nod_script_param_" + std::to_string( parameter + 1 ) ).c_str(), action == 0 ? "0" : "0.25" );
-			SetKeyValue( from, ( "nod_script_param_" + std::to_string( parameter + 2 ) ).c_str(),
-				ai && action == 0 ? "1 0 0 0" : "0 0 0 0" );
+			if ( !source->Get( "delay" ).empty() ) {
+				const unsigned offset = static_cast<unsigned>( strtoul( source->Get( "delay" ).c_str(), NULL, 10 ) );
+				SetKeyValue( from, ( "nod_script_param_" + std::to_string( parameter + offset ) ).c_str(),
+					action == 0 ? "0" : source->Get( "pulse-delay" ).c_str() );
+			}
+
+			if ( !source->Get( "data" ).empty() ) {
+				const unsigned offset = static_cast<unsigned>( strtoul( source->Get( "data" ).c_str(), NULL, 10 ) );
+				SetKeyValue( from, ( "nod_script_param_" + std::to_string( parameter + offset ) ).c_str(),
+					source->Get( pulse && action == 0 ? "start" : "stop" ).c_str() );
+			}
 		}
 	} else {
-		const std::string key = button ? "nod_script_param_" + std::to_string( slot ) :
-			preset ? "target" : "nod_script_param_16";
-		SetKeyValue( from, key.c_str(), target );
+		SetKeyValue( from, "target", target );
 	}
 	Undo_EndEntity( from );
 	Undo_End();

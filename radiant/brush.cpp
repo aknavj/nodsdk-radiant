@@ -55,6 +55,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "nodbounds.h"
 #include "nodview.h"
 #include "nodsurface.h"
+#include "nodtemplates.h"
 
 extern MainFrame* g_pParentWnd;
 
@@ -2985,6 +2986,7 @@ void Brush_SnapToGrid( brush_t *pb ){
 				VectorAdd( f->planepts[i], temp, f->planepts[i] );
 		}
 	}
+		SetKeyValue( pb->owner, "origin", NodTemplate_FormatPosition( pb->owner->origin ).c_str() );
 	} else
 	{
 		for ( f = pb->brush_faces ; f; f = f->next )
@@ -3537,11 +3539,8 @@ void Brush_Move( brush_t *b, const vec3_t move, bool bSnap ){
 
 	// PGM - keep the origin vector up to date on fixed size entities.
 	if ( b->owner->eclass->fixedsize ) {
-		char text[64];
 		VectorAdd( b->owner->origin, move, b->owner->origin );
-		sprintf( text, "%i %i %i",
-				 (int)b->owner->origin[0], (int)b->owner->origin[1], (int)b->owner->origin[2] );
-		SetKeyValue( b->owner, "origin", text );
+		SetKeyValue( b->owner, "origin", NodTemplate_FormatPosition( b->owner->origin ).c_str() );
 		//VectorAdd(b->maxs, b->mins, b->owner->origin);
 		//VectorScale(b->owner->origin, 0.5, b->owner->origin);
 	}

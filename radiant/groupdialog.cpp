@@ -442,7 +442,7 @@ static const char *NodInspector_Restriction( entity_t *entity, const char *key )
 	if ( NodScript_Class( ValueForKey( entity, "classname" ) ) || NodScript_Field( key ) ||
 		strncmp( key, "nod_script_", 11 ) == 0 || strncmp( key, "nod_frame_", 10 ) == 0 ) {
 		return NodScript_Restriction( ValueForKey( entity, "classname" ), key, NodInspector_HasKey( entity, key ),
-			NodScript_Template( entity ) ? ValueForKey( entity, "nod_prop_15" ) : "" );
+			NodScript_Behavior( ValueForKey( entity, "nod_prop_15" ) ) ? ValueForKey( entity, "nod_prop_15" ) : "" );
 	}
 
 	if ( strncmp( key, "nod_prop_", 9 ) == 0 || strncmp( key, "nod_raw_", 8 ) == 0 ) {
@@ -463,6 +463,23 @@ static const char *NodInspector_Restriction( entity_t *entity, const char *key )
 		NodInspector_HasKey( entity, "nod_geometry" ), NodInspector_HasKey( entity, "nod_reference" ),
 		*ValueForKey( entity, "model" ) != '\0', NodInspector_HasKey( entity, key ), key,
 		NodProperty_Info( entity->eclass->comments, key ) );
+}
+
+static std::string NodInspector_TemplateResource( entity_t *entity, const char *key ){
+	if ( !entity ) {
+		return "";
+	}
+
+	if ( strcmp( key, "nod_enemy" ) == 0 ) {
+		return "actor";
+	}
+
+	if ( strcmp( key, "nod_console_template" ) == 0 ) {
+		return "interactive";
+	}
+
+	const NodBehavior *behavior = NodScript_Behavior( ValueForKey( entity, "nod_prop_15" ) );
+	return behavior ? behavior->Field( key, "resource" ) : "";
 }
 
 static NodPropertyInfo NodInspector_FieldInfo( const char *key ){
@@ -533,7 +550,14 @@ static void NodInspector_UpdateFields( GtkWidget *, gpointer ){
 	const char *key = gtk_entry_get_text( GTK_ENTRY( EntWidgets[EntKeyField] ) );
 	nodValueEditor.Configure( key, NodInspector_FieldInfo( key ).storage );
 	nodValueEditor.Editable( restriction );
-	if ( !NodModel_Resources() ) {
+	const std::string resource = NodInspector_TemplateResource( edit_entity, key );
+	const bool templates = resource == "actor" || resource == "interactive";
+	if ( templates ) {
+		gtk_widget_show( nodValueEditor.resource );
+	}
+
+	gtk_button_set_label( GTK_BUTTON( nodValueEditor.resource ), templates ? _( "Choose NOT template..." ) : _( "Choose model..." ) );
+	if ( !templates && !NodModel_Resources() ) {
 		gtk_widget_set_sensitive( nodValueEditor.resource, FALSE );
 		gtk_widget_set_tooltip_text( nodValueEditor.resource, _( "Model browsing requires the current NOD model plugin." ) );
 	}
@@ -634,14 +658,30 @@ static bool NodInspector_Apply( const char *inputKey, const char *inputValue ){
 
 	for ( size_t i = 0; i < entities.size(); ++i ) {
 		entity_t *entity = entities[i];
+		NodTemplateCatalog activeCatalog;
+		const NodTemplateCatalog *catalog = &NodClasses_Catalog();
+		std::string catalogError;
+		const std::string resource = NodInspector_TemplateResource( entity, key );
+		const char *context = ValueForKey( entity, "nod_template_archives" );
+		if ( ( resource == "actor" || resource == "interactive" ) && NodScript_Template( entity ) &&
+			context != NodClasses_Catalog().archives ) {
+			if ( NodTemplate_Query( context, NULL, activeCatalog, catalogError ) ) {
+				catalog = &activeCatalog;
+			}
+		}
+
 		const char *error = authoring ? NodInspector_AuthoringRestriction( entity, key ) :
 			NodInspector_IsNative( entity ) ? NodInspector_Restriction( entity, key )
 			: _( "Native and ordinary entities cannot be edited together." );
+		if ( !catalogError.empty() ) {
+			error = catalogError.c_str();
+		}
+
 		if ( !error ) {
 			error = NodScript_Class( ValueForKey( entity, "classname" ) ) || NodScript_Field( key ) ||
 				strcmp( key, "targetname" ) == 0 ?
 				NodScript_Validate( key, value, NodScript_Kind( entity, key ), ValueForKey( entity, "classname" ),
-					NodScript_Template( entity ) ? ValueForKey( entity, "nod_prop_15" ) : "" ) :
+					ValueForKey( entity, "nod_prop_15" ), catalog ) :
 				NodPath_Editable( entity ) ? NodPath_Validate( key, value ) :
 			NodProperty_Validate( key, value, NodProperty_Info( entity->eclass->comments, key ) );
 		}
@@ -2644,6 +2684,69 @@ static void NodInspector_ParentCell( GtkTreeViewColumn *, GtkCellRenderer *rende
 }
 
 static void NodInspector_PickModel( GtkWidget *, gpointer ){
+	const char *key = gtk_entry_get_text( GTK_ENTRY( EntWidgets[EntKeyField] ) );
+	const std::string resource = NodInspector_TemplateResource( edit_entity, key );
+	if ( edit_entity && ( resource == "actor" || resource == "interactive" ) &&
+		gtk_editable_get_editable( GTK_EDITABLE( EntWidgets[EntValueField] ) ) ) {
+		const std::string selectedKey = key;
+		const std::vector<entity_t *> selection = NodInspector_Selection();
+		const std::string context = NodScript_Template( edit_entity ) ?
+			ValueForKey( edit_entity, "nod_template_archives" ) : NodClasses_Context();
+		NodTemplateCatalog catalog;
+		std::string error;
+		if ( !NodTemplate_Query( context.c_str(), NULL, catalog, error ) ) {
+			Sys_FPrintf( SYS_WRN, "NOD template catalog: %s\n", error.c_str() );
+			gtk_MessageBox( g_pGroupDlg->m_pWidget, error.c_str(), _( "Template catalog unavailable" ), MB_OK );
+			return;
+		}
+
+		GtkWidget *window = gtk_dialog_new_with_buttons( _( "Choose NOT template" ), GTK_WINDOW( g_pGroupDlg->m_pWidget ),
+			static_cast<GtkDialogFlags>( GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT ),
+			GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, GTK_STOCK_OK, GTK_RESPONSE_ACCEPT, NULL );
+		GtkWidget *choices = gtk_combo_box_entry_new_text();
+		std::set<std::string> available;
+		for ( size_t i = 0; i < catalog.choices.size(); ++i ) {
+			const NodTemplateChoice &choice = catalog.choices[i];
+			if ( resource == "actor" ? choice.spawnable : choice.handlers.count( "cTriggerOnAction" ) != 0 ) {
+				gtk_combo_box_append_text( GTK_COMBO_BOX( choices ), choice.name.c_str() );
+				available.insert( choice.name );
+			}
+		}
+
+		GtkWidget *entry = GTK_BIN( choices )->child;
+		GtkEntryCompletion *completion = gtk_entry_completion_new();
+		gtk_entry_completion_set_model( completion, gtk_combo_box_get_model( GTK_COMBO_BOX( choices ) ) );
+		gtk_entry_completion_set_text_column( completion, 0 );
+		gtk_entry_set_completion( GTK_ENTRY( entry ), completion );
+		g_object_unref( completion );
+		gtk_entry_set_text( GTK_ENTRY( entry ), gtk_entry_get_text( GTK_ENTRY( EntWidgets[EntValueField] ) ) );
+		gtk_container_set_border_width( GTK_CONTAINER( GTK_DIALOG( window )->vbox ), 8 );
+		gtk_box_pack_start( GTK_BOX( GTK_DIALOG( window )->vbox ),
+			gtk_label_new( available.empty() ? _( "No compatible templates in the active NOT archives." ) :
+				_( "Type to search the active NOT archives. Actor entries require a model, movement and AI." ) ), FALSE, FALSE, 5 );
+		gtk_box_pack_start( GTK_BOX( GTK_DIALOG( window )->vbox ), choices, FALSE, FALSE, 5 );
+		gtk_dialog_set_response_sensitive( GTK_DIALOG( window ), GTK_RESPONSE_ACCEPT, !available.empty() );
+		gtk_widget_show_all( window );
+		while ( gtk_dialog_run( GTK_DIALOG( window ) ) == GTK_RESPONSE_ACCEPT ) {
+			const std::string value = gtk_entry_get_text( GTK_ENTRY( entry ) );
+			if ( selection != NodInspector_Selection() ||
+				selectedKey != gtk_entry_get_text( GTK_ENTRY( EntWidgets[EntKeyField] ) ) ) {
+				error = _( "The selection changed; close and reopen the template picker." );
+			} else if ( !available.count( value ) ) {
+				error = _( "Choose a compatible template with its exact catalog spelling." );
+			} else {
+				gtk_entry_set_text( GTK_ENTRY( EntWidgets[EntValueField] ), value.c_str() );
+				break;
+			}
+
+			Sys_FPrintf( SYS_WRN, "NOD template selection: %s\n", error.c_str() );
+			gtk_MessageBox( window, error.c_str(), _( "Template not selected" ), MB_OK );
+		}
+
+		gtk_widget_destroy( window );
+		return;
+	}
+
 	const _QERNodModelTable *api = NodModel_Resources();
 	if ( !api || !gtk_editable_get_editable( GTK_EDITABLE( EntWidgets[EntValueField] ) ) ||
 		strcmp( gtk_entry_get_text( GTK_ENTRY( EntWidgets[EntKeyField] ) ), "nod_prop_4" ) != 0 ) {

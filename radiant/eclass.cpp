@@ -65,6 +65,10 @@ unsigned NodClasses_Generation(){
 	return nodClassesGeneration; 
 }
 
+const NodTemplateCatalog &NodClasses_Catalog(){
+	return nodClasses;
+}
+
 /*
  */
 const char *NodClasses_Context(){

@@ -54,7 +54,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "../../radiant/nodmodelreference.h"
 
 static bool NodModel_Value( entity_t *entity, const char *key, const char *storage, std::string &value ){
-	const char *preset = NodScript_ModelTemplate( entity->eclass->name );
+	const char *preset = NodScript_ModelTemplate( entity->eclass->name, ValueForKey( entity, "nod_console_template" ) );
 	if ( *preset ) {
 		const eclass_t *type = Eclass_ForName( preset, false );
 		if ( !type || !NodClass_Registered( type->comments ) ) {
@@ -248,7 +248,8 @@ void CEntityEclassModel::OnKeyValueChanged( entity_t *e, const char *key, const 
 		UpdateCachedData();
 	}
 	else if ( m_template && ( strncmp( key, "nod_prop_", 9 ) == 0 || strncmp( key, "nod_modifier_", 13 ) == 0 ||
-		strcmp( key, "nod_model_bundle" ) == 0 ) ) {
+		strcmp( key, "nod_region_min" ) == 0 || strcmp( key, "nod_region_max" ) == 0 ||
+		strcmp( key, "nod_model_bundle" ) == 0 || strcmp( key, "nod_console_template" ) == 0 ) ) {
 		UpdateCachedData();
 	}
 	else if ( m_nativePoint && ( strcmp( key, "nod_bounds_min" ) == 0 ||
@@ -315,7 +316,11 @@ void CEntityEclassModel::UpdateCachedData(){
 	vec3_t editorMins, editorMaxs;
 	if ( m_template ) {
 		std::string model, minimum, maximum, scale, offset;
-		if ( !NodModel_Value( m_entity, "nod_prop_4", "string32", model ) ||
+		if ( *ValueForKey( m_entity, "nod_region_min" ) || *ValueForKey( m_entity, "nod_region_max" ) ) {
+			minimum = ValueForKey( m_entity, "nod_region_min" );
+			maximum = ValueForKey( m_entity, "nod_region_max" );
+		}
+		else if ( !NodModel_Value( m_entity, "nod_prop_4", "string32", model ) ||
 			!NodModel_Value( m_entity, "nod_prop_6", "vector3", minimum ) ||
 			!NodModel_Value( m_entity, "nod_prop_7", "vector3", maximum ) ||
 			!NodModel_Value( m_entity, "nod_prop_143", "float32", scale ) ||

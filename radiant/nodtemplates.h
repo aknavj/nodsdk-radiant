@@ -44,18 +44,38 @@ struct NodTemplateProperty {
 	bool editable, local;
 	NodTemplateProperty() : editable( false ), local( false ) {}
 };
+struct NodBehavior {
+	std::map<std::string, std::string> settings, defaults;
+	std::map<std::string, std::map<std::string, std::string> > fields;
+	std::string Get( const std::string &key ) const {
+		std::map<std::string, std::string>::const_iterator found = settings.find( key );
+		return found == settings.end() ? "" : found->second;
+	}
+	std::string Field( const std::string &key, const std::string &attribute ) const {
+		std::map<std::string, std::map<std::string, std::string> >::const_iterator field = fields.find( key );
+		if ( field == fields.end() ) {
+			return "";
+		}
+
+		std::map<std::string, std::string>::const_iterator found = field->second.find( attribute );
+		return found == field->second.end() ? "" : found->second;
+	}
+};
 struct NodTemplateChoice {
 	std::string name, archive, type, properties, model, problem, context, parent, modifiers;
 	std::string removalSlot, removalPayload, removalOrder;
 	std::vector<NodTemplateProperty> effective;
 	std::map<std::string, std::map<std::string, std::string> > handlers;
-	bool placeable, detailed;
-	NodTemplateChoice() : placeable( false ), detailed( false ) {}
+	bool placeable, detailed, spawnable;
+	NodTemplateChoice() : placeable( false ), detailed( false ), spawnable( false ) {}
 };
 struct NodTemplateCatalog {
 	std::vector<NodTemplateChoice> choices;
 	std::string archives, diagnostics;
+	std::map<std::string, NodBehavior> behaviors;
 };
+
+const NodTemplateCatalog &NodClasses_Catalog();
 
 inline bool NodTemplate_MapString( const std::string &value, size_t maximum ){
 	if ( value.empty() || value.size() > maximum ) {
@@ -209,8 +229,9 @@ inline bool NodTemplate_ParseCatalog( const char *bytes, size_t size, NodTemplat
 	xmlDocPtr doc = xmlReadMemory( bytes, static_cast<int>( size ), "template-catalog.xml", "UTF-8",
 		XML_PARSE_NONET | XML_PARSE_NOBLANKS );
 	xmlNodePtr root = doc ? xmlDocGetRootElement( doc ) : NULL;
+	const std::string version = root ? NodTemplate_Attribute( root, "version" ) : "";
 	if ( !root || doc->intSubset || doc->extSubset || !xmlStrEqual( root->name, BAD_CAST "nod-template-catalog" )
-		|| NodTemplate_Attribute( root, "version" ) != "1" ) {
+		|| ( version != "1" && version != "2" ) ) {
 		if ( doc ) {
 			xmlFreeDoc( doc );
 		}
@@ -239,6 +260,109 @@ inline bool NodTemplate_ParseCatalog( const char *bytes, size_t size, NodTemplat
 		else if ( xmlStrEqual( node->name, BAD_CAST "warning" ) ) {
 			next.diagnostics += NodTemplate_Attribute( node, "text" ) + "\n";
 		}
+		else if ( xmlStrEqual( node->name, BAD_CAST "behavior" ) ) {
+			const std::string name = NodTemplate_Attribute( node, "name" );
+			if ( !NodTemplate_MapString( name, 31 ) || next.behaviors.count( name ) || next.behaviors.size() >= 32 ) {
+				error = "Invalid or duplicate SDK behavior."; break;
+			}
+
+			NodBehavior behavior;
+			const char *settings[] = { "input", "first", "count", "stride", "delay", "data", "replace",
+				"start", "stop", "pulse-delay", "frame-step", "frame-orientation" };
+			for ( size_t i = 0; i < G_N_ELEMENTS( settings ); ++i ) {
+				if ( xmlHasProp( node, BAD_CAST settings[i] ) ) {
+					behavior.settings[settings[i]] = NodTemplate_Attribute( node, settings[i] );
+				}
+			}
+
+			if ( behavior.Get( "input" ) != "none" && behavior.Get( "input" ) != "trigger" &&
+				behavior.Get( "input" ) != "pulse" ) {
+				error = "Invalid SDK behavior input."; break;
+			}
+
+			for ( xmlNodePtr field = node->children; field; field = field->next ) {
+				const std::string key = NodTemplate_Attribute( field, "key" );
+				const std::string value = NodTemplate_Attribute( field, "value" );
+				if ( field->type != XML_ELEMENT_NODE || !xmlStrEqual( field->name, BAD_CAST "field" ) || field->children ||
+					behavior.fields.size() >= 128 || !NodTemplate_MapString( key, 63 ) || value.size() > 255 ||
+					( key.compare( 0, 11, "nod_script_" ) != 0 && key.compare( 0, 10, "nod_frame_" ) != 0 &&
+						key != "nod_region_min" && key != "nod_region_max" ) ||
+					behavior.fields.count( key ) ) {
+					error = "Invalid SDK behavior field."; break;
+				}
+
+				std::map<std::string, std::string> attributes;
+				const char *names[] = { "label", "storage", "editable", "min", "max", "exclusive-min", "resource" };
+				for ( size_t i = 0; i < G_N_ELEMENTS( names ); ++i ) {
+					if ( xmlHasProp( field, BAD_CAST names[i] ) ) {
+						attributes[names[i]] = NodTemplate_Attribute( field, names[i] );
+					}
+				}
+
+				if ( ( attributes["editable"] != "0" && attributes["editable"] != "1" ) ||
+					!NodTemplate_MapString( attributes["label"], 127 ) ||
+					( attributes["storage"] != "raw" && attributes["storage"] != "uint32 bits" &&
+						attributes["storage"] != "float32" && attributes["storage"] != "object reference" &&
+						attributes["storage"] != "string" && attributes["storage"] != "vector3" ) ) {
+					error = "Invalid SDK behavior field descriptors."; break;
+				}
+
+				const char *limits[] = { "min", "max" };
+				for ( size_t i = 0; i < G_N_ELEMENTS( limits ); ++i ) {
+					float number[3];
+					if ( attributes.count( limits[i] ) &&
+						!ModelTransform_Parse( attributes[limits[i]].c_str(), 1, number, true ) ) {
+						error = "Invalid SDK behavior numeric limit.";
+					}
+				}
+
+				behavior.defaults[key] = value;
+				behavior.fields[key] = attributes;
+			}
+
+			if ( !error.empty() ) {
+				break;
+			}
+
+			if ( behavior.defaults["nod_script_authoring"] != "parameters-v1" ||
+				!NodTemplate_Number( behavior.defaults["nod_script_param_count"], 128 ) ||
+				!NodTemplate_Number( behavior.defaults["nod_frame_count"], 1024 ) ) {
+				error = "Incomplete SDK behavior defaults."; break;
+			}
+
+			if ( behavior.settings.count( "first" ) ) {
+				if ( !NodTemplate_Number( behavior.Get( "first" ), 127 ) ||
+					!NodTemplate_Number( behavior.Get( "count" ), 128 ) || behavior.Get( "count" ) == "0" ||
+					!NodTemplate_Number( behavior.Get( "stride" ), 128 ) || behavior.Get( "stride" ) == "0" ) {
+					error = "Invalid SDK behavior connection layout."; break;
+				}
+
+				const unsigned first = static_cast<unsigned>( strtoul( behavior.Get( "first" ).c_str(), NULL, 10 ) );
+				const unsigned count = static_cast<unsigned>( strtoul( behavior.Get( "count" ).c_str(), NULL, 10 ) );
+				const unsigned stride = static_cast<unsigned>( strtoul( behavior.Get( "stride" ).c_str(), NULL, 10 ) );
+				const unsigned parameters = static_cast<unsigned>( strtoul( behavior.defaults["nod_script_param_count"].c_str(), NULL, 10 ) );
+				if ( first + count * stride > parameters ) {
+					error = "SDK behavior connections exceed the parameter schema."; break;
+				}
+
+				const char *offsets[] = { "delay", "data" };
+				for ( size_t i = 0; i < G_N_ELEMENTS( offsets ); ++i ) {
+					if ( behavior.settings.count( offsets[i] ) &&
+						!NodTemplate_Number( behavior.Get( offsets[i] ), stride - 1 ) ) {
+						error = "Invalid SDK behavior connection offset.";
+					}
+				}
+			}
+
+			if ( !behavior.Get( "frame-step" ).empty() ) {
+				float step[3];
+				if ( !ModelTransform_Parse( behavior.Get( "frame-step" ).c_str(), 3, step, true ) ) {
+					error = "Invalid SDK behavior frame step."; break;
+				}
+			}
+
+			next.behaviors[name] = behavior;
+		}
 		else if ( xmlStrEqual( node->name, BAD_CAST "template" ) ) {
 			NodTemplateChoice choice;
 			choice.name = NodTemplate_Attribute( node, "name" );
@@ -252,6 +376,8 @@ inline bool NodTemplate_ParseCatalog( const char *bytes, size_t size, NodTemplat
 			choice.placeable = enabled == "1";
 			const std::string details = NodTemplate_Attribute( node, "details" );
 			choice.detailed = details == "1";
+			const std::string spawnable = NodTemplate_Attribute( node, "spawnable" );
+			choice.spawnable = spawnable == "1";
 			choice.removalSlot = NodTemplate_Attribute( node, "removal-slot" );
 			choice.removalPayload = NodTemplate_Attribute( node, "removal-payload" );
 			choice.removalOrder = NodTemplate_Attribute( node, "removal-order" );
@@ -269,6 +395,8 @@ inline bool NodTemplate_ParseCatalog( const char *bytes, size_t size, NodTemplat
 			}
 
 			if ( ( enabled != "0" && enabled != "1" ) || !sources.count( choice.archive ) ||
+				( !spawnable.empty() && spawnable != "0" && spawnable != "1" ) ||
+				( choice.spawnable && ( !choice.placeable || choice.type != "0" ) ) ||
 				( !details.empty() && details != "1" ) ||
 				!NodTemplate_Number( choice.type, G_GUINT64_CONSTANT( 4294967295 ) ) ||
 				!NodTemplate_Number( choice.properties, 128 ) || next.choices.size() == 20480 ||
@@ -288,7 +416,7 @@ inline bool NodTemplate_ParseCatalog( const char *bytes, size_t size, NodTemplat
 
 					if ( property->type == XML_ELEMENT_NODE && xmlStrEqual( property->name, BAD_CAST "handler" ) ) {
 						const std::string handler = NodTemplate_Attribute( property, "name" );
-						if ( !NodTemplate_MapString( handler, 31 ) || choice.handlers.count( handler ) || choice.handlers.size() >= 4 ) {
+						if ( !NodTemplate_MapString( handler, 31 ) || choice.handlers.count( handler ) || choice.handlers.size() >= 32 ) {
 							error = "Invalid or duplicate SDK handler schema."; break;
 						}
 
@@ -298,7 +426,8 @@ inline bool NodTemplate_ParseCatalog( const char *bytes, size_t size, NodTemplat
 							const std::string value = NodTemplate_Attribute( field, "value" );
 							if ( field->type != XML_ELEMENT_NODE || !xmlStrEqual( field->name, BAD_CAST "field" ) ||
 								field->children || fields.size() >= 128 || value.size() > 255 ||
-								( key.compare( 0, 11, "nod_script_" ) != 0 && key.compare( 0, 10, "nod_frame_" ) != 0 ) ||
+								( key.compare( 0, 11, "nod_script_" ) != 0 && key.compare( 0, 10, "nod_frame_" ) != 0 &&
+									key != "nod_region_min" && key != "nod_region_max" ) ||
 								!NodTemplate_MapString( key, 63 ) || !fields.insert( std::make_pair( key, value ) ).second ) {
 								error = "Invalid SDK handler field."; break;
 							}
@@ -370,6 +499,10 @@ inline bool NodTemplate_ParseCatalog( const char *bytes, size_t size, NodTemplat
 	xmlFreeDoc( doc );
 	if ( sources.empty() && error.empty() ) {
 		error = "SDK catalog has no Global archive.";
+	}
+
+	if ( version == "2" && next.behaviors.empty() && error.empty() ) {
+		error = "SDK catalog is missing its behavior registry.";
 	}
 
 	if ( !error.empty() ) {

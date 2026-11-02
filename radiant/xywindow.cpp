@@ -2561,9 +2561,11 @@ void XYWnd::XY_DrawGrid(){
 		if ( COLORS_DIFFER( colour, COLOR_GRIDBACK ) ) {
 			qglColor3fv( g_qeglobals.d_savedinfo.colors[colour] );
 
+			const double gridSize = g_qeglobals.d_gridsize;
 			qglBegin( GL_LINES );
-			for ( x = xb ; x < xe ; x += g_qeglobals.d_gridsize )
+			for ( double index = ceil( xb / gridSize ); index * gridSize < xe ; ++index )
 			{
+				x = static_cast<float>( index * gridSize );
 				if ( !( (int)x & ( step - 1 ) ) && !( (int)x - x ) ) {
 					continue;
 				}
@@ -2572,8 +2574,9 @@ void XYWnd::XY_DrawGrid(){
 				qglVertex2f( x, ye );
 			}
 
-			for ( y = yb ; y < ye ; y += g_qeglobals.d_gridsize )
+			for ( double index = ceil( yb / gridSize ); index * gridSize < ye ; ++index )
 			{
+				y = static_cast<float>( index * gridSize );
 				if ( !( (int)y & ( step - 1 ) )  && !( (int)y - y ) ) {
 					continue;
 				}
