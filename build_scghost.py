@@ -62,6 +62,13 @@ def windows_dependencies():
             bundle.extractall(ROOT.parent)
         if not target.is_dir():
             raise RuntimeError(f"{archive} did not provide {directory}")
+    for source, relative in windows_runtime_files():
+        destination = RUNTIME / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+
+def windows_runtime_files():
     gtk = ROOT.parent / "gtk-2.24.10"
     patterns = (
         (gtk, "bin/*.dll"), (gtk, "bin/gspawn-*.exe"), (gtk, "lib/*.dll"),
@@ -70,12 +77,17 @@ def windows_dependencies():
     )
     for directory, pattern in patterns:
         for filename in directory.glob(pattern):
-            shutil.copy2(filename, RUNTIME / filename.name)
+            yield filename, Path(filename.name)
     for name in ("etc", "share"):
-        shutil.copytree(gtk / name, RUNTIME / name, dirs_exist_ok=True)
+        directory = gtk / name
+        if not directory.is_dir():
+            raise FileNotFoundError(f"Missing GTK runtime directory: {directory}")
+        for filename in directory.rglob("*"):
+            if filename.is_file():
+                yield filename, Path(name) / filename.relative_to(directory)
 
 
-def windows_build(args, clean=False):
+def find_visual_studio():
     finder = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
     installation = subprocess.check_output(
         [str(finder), "-latest", "-products", "*", "-requires",
@@ -84,7 +96,11 @@ def windows_build(args, clean=False):
     ).strip()
     if not installation:
         raise RuntimeError("Install Visual Studio 2022 with the C++ workload and a Windows SDK.")
-    environment = Path(installation) / "Common7" / "Tools" / "VsDevCmd.bat"
+    return Path(installation)
+
+
+def windows_build(args, clean=False):
+    environment = find_visual_studio() / "Common7" / "Tools" / "VsDevCmd.bat"
     projects = ("radiant",) + MODULES + LIBRARIES
     targets = ";".join(name + (":Clean" if clean else "") for name in projects)
     with tempfile.TemporaryDirectory(prefix="radiant-build-") as temporary:
@@ -100,7 +116,7 @@ def windows_build(args, clean=False):
         run([os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", command])
 
 
-def configure(args):
+def resolve_sdk(args):
     profile = RUNTIME / "scghost.game"
     defaults = ET.parse(profile).getroot().attrib if profile.exists() else {}
     sdk = args.sdk_dir or defaults.get("nod_editorspath")
@@ -108,14 +124,24 @@ def configure(args):
         candidates = list((ROOT.parent / "nodsdk-scghost").glob("OpenNOD-SDK-*-*"))
         if len(candidates) == 1:
             sdk = str(candidates[0])
-    assets = args.asset_root or defaults.get("nod_assetpath")
-    if not sdk or not assets:
-        raise RuntimeError("Provide --sdk-dir DIR and --asset-root DIR, or set NOD_SDK_DIR and NOD_ASSET_ROOT.")
-    sdk, assets = path(sdk), path(assets)
+    if not sdk:
+        raise RuntimeError("Provide --sdk-dir DIR or set NOD_SDK_DIR.")
+    sdk = path(sdk)
     suffix = ".exe" if os.name == "nt" else ""
     for name in ("NODTemplates", "NOTEditor", "NSDEditor"):
         if not (sdk / (name + suffix)).is_file():
             raise RuntimeError(f"Missing SDK executable: {sdk / (name + suffix)}")
+    return sdk
+
+
+def configure(args):
+    sdk = resolve_sdk(args)
+    profile = RUNTIME / "scghost.game"
+    defaults = ET.parse(profile).getroot().attrib if profile.exists() else {}
+    assets = args.asset_root or defaults.get("nod_assetpath")
+    if not assets:
+        raise RuntimeError("Provide --asset-root DIR or set NOD_ASSET_ROOT.")
+    assets = path(assets)
     if not (assets / "Materials").is_dir():
         raise RuntimeError(f"Asset root must be the parent of Materials: {assets}")
     platform = "win32" if os.name == "nt" else "linux"
@@ -160,7 +186,11 @@ def stage_profile(sdk, assets, workspace):
 
 
 def build(args):
-    sdk, assets, workspace = configure(args)
+    packaging = getattr(args, "package", False)
+    if packaging:
+        sdk = resolve_sdk(args)
+    else:
+        sdk, assets, workspace = configure(args)
     run([sys.executable, "dependencies.py"])
     run([sys.executable, "makeversion.py"])
     RUNTIME.mkdir(parents=True, exist_ok=True)
@@ -175,8 +205,12 @@ def build(args):
     for filename in [executable] + [RUNTIME / "modules" / (name + extension) for name in MODULES]:
         if not filename.is_file():
             raise RuntimeError(f"Build output is missing: {filename}")
-    stage_profile(sdk, assets, workspace)
-    print(f"Build complete. Run {executable.name} from {RUNTIME}")
+    if packaging:
+        from package_release import package_release
+        package_release(ROOT, sdk, MODULES, windows_runtime_files(), find_visual_studio())
+    else:
+        stage_profile(sdk, assets, workspace)
+        print(f"Build complete. Run {executable.name} from {RUNTIME}")
 
 
 def clean(args):
@@ -196,11 +230,15 @@ def main():
     parser.add_argument("--workspace", default=os.environ.get("NOD_WORKSPACE"))
     parser.add_argument("--configuration", choices=("Release", "Debug"), default="Release")
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
+    parser.add_argument("--package", action="store_true",
+                        help="Build a Windows Release staging folder and ZIP in dist; no game assets required.")
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be positive")
     if sys.platform not in ("win32", "linux"):
         parser.error("Supported platforms are Windows (Git Bash) and Linux.")
+    if args.package and (args.command != "build" or args.configuration != "Release" or os.name != "nt"):
+        parser.error("--package requires a Windows Release build.")
     if args.command == "build":
         build(args)
     else:
