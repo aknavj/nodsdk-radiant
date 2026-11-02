@@ -37,6 +37,14 @@ inline bool NodPath_Authoring( entity_t *entity ){
 		!*ValueForKey( entity, "nod_id" );
 }
 
+inline bool NodPath_Editable( entity_t *entity ){
+	const char *name = ValueForKey( entity, "classname" );
+	const char *identity = ValueForKey( entity, "nod_id" );
+	return NodPath_Authoring( entity ) ||
+		( strcmp( name, "nod_npd_waypoint" ) == 0 && strncmp( identity, "npd:", 4 ) == 0 ) ||
+		( strcmp( name, "nod_npd_link" ) == 0 && strncmp( identity, "link:", 5 ) == 0 );
+}
+
 inline entity_t *NodPath_Create( const char *name, const vec3_t position, const char *from,
 	const char *to, std::string &error ){
 	error.clear();
@@ -84,10 +92,10 @@ inline entity_t *NodPath_Create( const char *name, const vec3_t position, const 
 
 inline bool NodPath_Connect( entity_t *from, entity_t *to, std::string &error ){
 	error.clear();
-	if ( !NodPath_Authoring( from ) || !NodPath_Authoring( to ) || from == to ||
+	if ( !NodPath_Editable( from ) || !NodPath_Editable( to ) || from == to ||
 		strcmp( ValueForKey( from, "classname" ), "nod_npd_waypoint" ) != 0 ||
 		strcmp( ValueForKey( to, "classname" ), "nod_npd_waypoint" ) != 0 ) {
-		error = "Select two MAP-only waypoints, source first."; return false;
+		error = "Select two waypoints, source first."; return false;
 	}
 
 	const std::string a = ValueForKey( from, "nod_waypoint_id" ), b = ValueForKey( to, "nod_waypoint_id" );
@@ -101,9 +109,21 @@ inline bool NodPath_Connect( entity_t *from, entity_t *to, std::string &error ){
 	}
 
 	for ( entity_t *entity = entities.next; entity != &entities; entity = entity->next ) {
-		if ( NodPath_Authoring( entity ) && strcmp( ValueForKey( entity, "classname" ), "nod_npd_link" ) == 0 &&
-			a == ValueForKey( entity, "nod_from" ) && b == ValueForKey( entity, "nod_to" ) ) {
-			error = "This directed link already exists."; return false;
+		if ( strcmp( ValueForKey( entity, "classname" ), "nod_npd_link" ) != 0 ) {
+			continue;
+		}
+
+		if ( NodPath_Authoring( entity ) ) {
+			if ( a == ValueForKey( entity, "nod_from" ) && b == ValueForKey( entity, "nod_to" ) ) {
+				error = "This directed link already exists.";
+				return false;
+			}
+		} else if ( strncmp( ValueForKey( from, "nod_id" ), "npd:", 4 ) == 0 &&
+			strncmp( ValueForKey( to, "nod_id" ), "npd:", 4 ) == 0 &&
+			strcmp( ValueForKey( from, "nod_id" ) + 4, ValueForKey( entity, "nod_from" ) ) == 0 &&
+			strcmp( ValueForKey( to, "nod_id" ) + 4, ValueForKey( entity, "nod_to" ) ) == 0 ) {
+			error = "This directed link already exists.";
+			return false;
 		}
 	}
 

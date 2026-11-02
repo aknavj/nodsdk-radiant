@@ -80,7 +80,8 @@ void Entity_UpdateClass( entity_t *e, const char* value ){
 
 		model->DecRef();
 	}
-	else if ( e->eclass && ( e->eclass->modelpath || NodEntity_IsPoint( value ) || NodClass_Registered( e->eclass->comments ) ) ) {
+	else if ( e->eclass && ( e->eclass->modelpath || NodEntity_IsPoint( value ) ||
+		NodClass_Registered( e->eclass->comments ) || *NodScript_ModelTemplate( value ) ) ) {
 		CEntityEclassModel *model = new CEntityEclassModel( e );
 
 		model->SetEclass( e->eclass );

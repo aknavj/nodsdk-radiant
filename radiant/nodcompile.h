@@ -43,7 +43,8 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #endif
 
 struct NodCompileOptions {
-	std::string map, workspace, assets, tools, output, mapName;
+	std::string map, workspace, assets, tools, output, mapName, sidecar, script;
+	bool sourceBacked = false;
 	bool geometry = true, objects = true, pathing = true, lighting = true;
 	bool oversample = false, shadows = true, spacingOverride = false, sun = false, ambient = false;
 	double spacing = 4, phong = 0, sunIntensity = 1, ambientIntensity = 0.35;
@@ -104,7 +105,7 @@ inline std::string NodCompile_Join( const std::string &directory, const std::str
 }
 
 inline std::string NodCompile_Tool( const std::string &directory, int index ){
-	const char *names[] = { "MAPtoNIL", "MAPtoNSD", "MAPtoNPD" };
+	const char *names[] = { "MAPtoNIL", "MAPtoNSD", "MAPtoNPD", "NODscene", "NODScript" };
 	return NodCompile_Join( directory, std::string( names[index] )
 #ifdef _WIN32
 		+ ".exe"
@@ -113,6 +114,16 @@ inline std::string NodCompile_Tool( const std::string &directory, int index ){
 }
 
 inline bool NodCompile_HasTools( const std::string &directory, const NodCompileOptions *options = NULL ){
+	if ( options && !options->script.empty() &&
+		( !g_file_test( NodCompile_Tool( directory, 4 ).c_str(), G_FILE_TEST_IS_REGULAR ) ||
+		  !g_file_test( NodCompile_Tool( directory, 4 ).c_str(), G_FILE_TEST_IS_EXECUTABLE ) ) ) {
+		return false;
+	}
+	if ( options && options->sourceBacked ) {
+		return g_file_test( NodCompile_Tool( directory, 3 ).c_str(), G_FILE_TEST_IS_REGULAR ) &&
+			g_file_test( NodCompile_Tool( directory, 3 ).c_str(), G_FILE_TEST_IS_EXECUTABLE );
+	}
+
 	for ( int i = 0; i != 3; ++i ) {
 		if ( !options || options->exports( i ) ) {
 			if ( !g_file_test( NodCompile_Tool( directory, i ).c_str(), G_FILE_TEST_IS_REGULAR ) ||
@@ -332,6 +343,23 @@ inline std::string NodCompile_Validate( const NodCompileOptions &options ){
 		return "Override Map Name must be a filename stem without .map/.nil/.nsd/.npd, folders, reserved filename characters or device names, or surrounding whitespace (maximum 251 UTF-8 bytes). Leave it blank to use the MAP filename.";
 	}
 
+	if ( options.sourceBacked ) {
+		if ( !g_path_is_absolute( options.sidecar.c_str() ) ||
+			!g_file_test( options.sidecar.c_str(), G_FILE_TEST_IS_REGULAR ) ) {
+			return "Select the matching .nodsrc sidecar for this imported scene. Save As does not move its sidecar.";
+		}
+
+		if ( options.lighting || options.physicsMarginOverride ) {
+			return "Imported scenes preserve NIL geometry and lighting. Disable lighting and physics-margin overrides.";
+		}
+	}
+
+	if ( !options.script.empty() &&
+		( !g_path_is_absolute( options.script.c_str() ) ||
+		  !g_file_test( options.script.c_str(), G_FILE_TEST_IS_REGULAR ) ) ) {
+		return "Choose an existing script source file, or clear the script selection.";
+	}
+
 	if ( options.exports( 0 ) && options.physicsMarginOverride &&
 		( !std::isfinite( options.physicsMargin ) || options.physicsMargin <= 0 ||
 		options.physicsMargin > FLT_MAX || static_cast<float>( options.physicsMargin ) == 0 ) ) {
@@ -387,7 +415,7 @@ inline std::string NodCompile_Validate( const NodCompileOptions &options ){
 	}
 
 	if ( !g_path_is_absolute( options.tools.c_str() ) || !NodCompile_HasTools( options.tools, &options ) ) {
-		return "Select one SDK binaries folder containing the selected export compilers.";
+		return "Select updated SDK binaries containing the selected export compilers and NODScript when a script is selected.";
 	}
 
 	if ( !g_file_test( options.workspace.c_str(), G_FILE_TEST_IS_DIR ) ) {
@@ -412,6 +440,38 @@ inline std::string NodCompile_Validate( const NodCompileOptions &options ){
 	return "";
 }
 
+inline bool NodCompile_Execute( const NodCompileOptions &options, std::vector<std::string> &arguments,
+	const std::function<void( const std::string & )> &log, std::string &error ){
+	std::vector<gchar *> argv;
+	for ( size_t i = 0; i < arguments.size(); ++i ) {
+		argv.push_back( &arguments[i][0] );
+	}
+	argv.push_back( NULL );
+	log( "\nRunning " + arguments[0] + "\n" );
+	gchar *standard = NULL, *diagnostic = NULL;
+	gint status = 0;
+	GError *failure = NULL;
+	const bool launched = g_spawn_sync( options.workspace.c_str(), &argv[0], NULL, static_cast<GSpawnFlags>( 0 ),
+		NULL, NULL, &standard, &diagnostic, &status, &failure ) != FALSE;
+	if ( standard ) {
+		log( standard );
+	}
+	if ( diagnostic ) {
+		log( diagnostic );
+	}
+	g_free( standard );
+	g_free( diagnostic );
+	if ( !launched ) {
+		error = std::string( "Cannot start compiler: " ) + ( failure ? failure->message : arguments[0] );
+	} else if ( status != 0 ) {
+		error = "Compiler failed (process status " + std::to_string( status ) + "): " + arguments[0];
+	}
+	if ( failure ) {
+		g_error_free( failure );
+	}
+	return launched && status == 0;
+}
+
 inline bool NodCompile_Run( const NodCompileOptions &options,
 						   const std::function<void( const std::string & )> &log, std::string &error ){
 	error = NodCompile_Validate( options );
@@ -431,6 +491,10 @@ inline bool NodCompile_Run( const NodCompileOptions &options,
 
 	const std::string stem = options.mapName.empty() ? NodCompile_Stem( options.map ) : options.mapName;
 	const std::string snapshot = NodCompile_Join( stage, stem + ".map" );
+	const std::string sourceSnapshot = NodCompile_Join( stage, stem + ".nodsrc" );
+	const std::string scriptSnapshot = NodCompile_Join( stage, stem + ".nods" );
+	const std::string expandedSnapshot = NodCompile_Join( stage, stem + ".expanded.map" );
+	std::string compilerInput = snapshot;
 	const char *extensions[] = { ".nil", ".nsd", ".npd" };
 	std::string staged[3], final[3], backup[3];
 	bool saved[3] = { false, false, false }, published[3] = { false, false, false };
@@ -456,13 +520,75 @@ inline bool NodCompile_Run( const NodCompileOptions &options,
 	}
 	}
 
-	for ( int i = 0; ok && i != 3; ++i ) {
-		if ( !options.exports( i ) ) {
+	if ( ok && options.sourceBacked ) {
+		contents = NULL;
+		length = 0;
+		failure = NULL;
+		ok = g_file_get_contents( options.sidecar.c_str(), &contents, &length, &failure ) != FALSE;
+		if ( ok ) {
+			ok = g_file_set_contents( sourceSnapshot.c_str(), contents, length, &failure ) != FALSE;
+		}
+
+		g_free( contents );
+		if ( !ok ) {
+			error = std::string( "Cannot snapshot source sidecar: " ) + ( failure ? failure->message : options.sidecar );
+			if ( failure ) {
+				g_error_free( failure );
+			}
+		}
+	}
+
+	if ( ok && !options.script.empty() ) {
+		contents = NULL;
+		length = 0;
+		failure = NULL;
+		ok = g_file_get_contents( options.script.c_str(), &contents, &length, &failure ) != FALSE;
+		if ( ok && length > 1024 * 1024 ) {
+			ok = false;
+			error = "Script source exceeds the 1 MiB limit: " + options.script;
+		}
+		if ( ok ) {
+			ok = g_file_set_contents( scriptSnapshot.c_str(), contents, length, &failure ) != FALSE;
+		}
+		g_free( contents );
+		if ( !ok ) {
+			if ( error.empty() ) {
+				error = std::string( "Cannot snapshot script: " ) + ( failure ? failure->message : options.script );
+			}
+			if ( failure ) {
+				g_error_free( failure );
+			}
+		} else {
+			std::vector<std::string> arguments{ NodCompile_Tool( options.tools, 4 ), "--workspace", options.workspace,
+				"--source-name", options.script, scriptSnapshot, snapshot, expandedSnapshot };
+			ok = NodCompile_Execute( options, arguments, log, error );
+			if ( ok && !g_file_test( expandedSnapshot.c_str(), G_FILE_TEST_IS_REGULAR ) ) {
+				ok = false;
+				error = "NODScript returned success without writing: " + expandedSnapshot;
+			}
+			if ( ok ) {
+				compilerInput = expandedSnapshot;
+			}
+		}
+	}
+
+	for ( int i = 0; ok && i != ( options.sourceBacked ? 1 : 3 ); ++i ) {
+		if ( !options.sourceBacked && !options.exports( i ) ) {
 			continue;
 		}
 
 		std::vector<std::string> arguments;
-		arguments.push_back( NodCompile_Tool( options.tools, i ) );
+		arguments.push_back( NodCompile_Tool( options.tools, options.sourceBacked ? 3 : i ) );
+		if ( options.sourceBacked ) {
+			arguments.push_back( "compile" );
+			arguments.push_back( compilerInput );
+			arguments.push_back( sourceSnapshot );
+			for ( int outputIndex = 0; outputIndex != 3; ++outputIndex ) {
+				arguments.push_back( staged[outputIndex] );
+			}
+			arguments.push_back( options.workspace );
+			arguments.push_back( options.assets );
+		} else {
 		if ( i == 0 ) {
 			arguments.push_back( "--world-only" );
 		}
@@ -478,35 +604,21 @@ inline bool NodCompile_Run( const NodCompileOptions &options,
 			}
 		}
 
-		arguments.push_back( snapshot ); arguments.push_back( staged[i] );
-		std::vector<gchar *> argv;
-		for ( size_t j = 0; j < arguments.size(); ++j ) {
-			argv.push_back( &arguments[j][0] );
+		arguments.push_back( compilerInput ); arguments.push_back( staged[i] );
 		}
-
-		argv.push_back( NULL );
-		log( "\nRunning " + arguments[0] + "\n" );
-		gchar *standard = NULL, *diagnostic = NULL;
-		gint status = 0;
-		failure = NULL;
-		ok = g_spawn_sync( options.workspace.c_str(), &argv[0], NULL, static_cast<GSpawnFlags>( 0 ),
-			NULL, NULL, &standard, &diagnostic, &status, &failure ) != FALSE;
-		if ( standard ) {
-			log( standard );
-		}
-
-		if ( diagnostic ) {
-			log( diagnostic );
-		}
-
-		g_free( standard ); g_free( diagnostic );
-		if ( !ok ) {
-			error = std::string( "Cannot start compiler: " ) + ( failure ? failure->message : arguments[0] );
-		} else if ( status != 0 ) {
-			ok = false; error = "Compiler failed (process status " + std::to_string( status ) + "): " + arguments[0];
-		}
-		else if ( !g_file_test( staged[i].c_str(), G_FILE_TEST_IS_REGULAR ) ) {
+		ok = NodCompile_Execute( options, arguments, log, error );
+		if ( ok && !g_file_test( staged[i].c_str(), G_FILE_TEST_IS_REGULAR ) ) {
 			ok = false; error = "Compiler returned success without writing: " + staged[i];
+		}
+
+		if ( ok && options.sourceBacked ) {
+			for ( int outputIndex = 0; outputIndex != 3; ++outputIndex ) {
+				if ( !g_file_test( staged[outputIndex].c_str(), G_FILE_TEST_IS_REGULAR ) ) {
+					ok = false;
+					error = "NODscene returned success without writing: " + staged[outputIndex];
+					break;
+				}
+			}
 		}
 
 		if ( failure ) {
@@ -563,6 +675,9 @@ inline bool NodCompile_Run( const NodCompileOptions &options,
 	if ( restored ) {
 		std::vector<std::string> cleanup;
 		cleanup.push_back( snapshot );
+		cleanup.push_back( sourceSnapshot );
+		cleanup.push_back( scriptSnapshot );
+		cleanup.push_back( expandedSnapshot );
 		for ( int i = 0; i != 3; ++i ) { cleanup.push_back( staged[i] ); cleanup.push_back( backup[i] ); }
 		bool clean = true;
 		for ( size_t i = 0; i < cleanup.size(); ++i ) {

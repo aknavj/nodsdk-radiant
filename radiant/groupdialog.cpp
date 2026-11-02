@@ -68,6 +68,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "nodtemplates.h"
 #include "nodtemplateplacement.h"
 #include "nodpathplacement.h"
+#include "nodscriptplacement.h"
 #include "nodviewstorage.h"
 #include <map>
 #include <algorithm>
@@ -123,6 +124,7 @@ static GtkWidget *nodArchives;
 static GtkWidget *nodModelBundle;
 static std::string nodDisplayedBundle;
 static GtkWidget *nodLegacySource;
+static GtkWidget *nodHandler, *nodHandlerApply, *nodHandlerRow;
 static bool nodEffectiveProperties = true;
 
 static bool NodInspector_HasKey( entity_t *entity, const char *key );
@@ -364,7 +366,8 @@ static std::vector<entity_t *> NodInspector_Selection(){
 
 static bool NodInspector_IsNative( entity_t *entity ){
 	return entity && !NodInspector_IsAuthoring( entity ) &&
-		NodProperty_IsNative( ValueForKey( entity, "classname" ), ValueForKey( entity, "nod_id" ) );
+		( NodScript_Class( ValueForKey( entity, "classname" ) ) ||
+			NodProperty_IsNative( ValueForKey( entity, "classname" ), ValueForKey( entity, "nod_id" ) ) );
 }
 
 static bool NodInspector_HasKey( entity_t *entity, const char *key ){
@@ -409,6 +412,16 @@ static const char *NodInspector_AuthoringRestriction( entity_t *entity, const ch
 		return NULL;
 	}
 
+	if ( NodScript_Field( key ) || strcmp( key, "targetname" ) == 0 ) {
+		return strcmp( key, "targetname" ) == 0 ? NULL :
+			NodScript_Restriction( ValueForKey( entity, "classname" ), key, NodInspector_HasKey( entity, key ),
+				ValueForKey( entity, "nod_prop_15" ) );
+	}
+
+	if ( strcmp( key, "nod_prop_15" ) == 0 ) {
+		return "Use the Native handler selector to initialize or remove the complete schema.";
+	}
+
 	const NodTemplateChoice *choice = NodInspector_Metadata( entity, error );
 	if ( !choice ) {
 		return error.c_str();
@@ -418,8 +431,18 @@ static const char *NodInspector_AuthoringRestriction( entity_t *entity, const ch
 }
 
 static const char *NodInspector_Restriction( entity_t *entity, const char *key ){
-	if ( NodPath_Authoring( entity ) ) {
+	if ( NodPath_Editable( entity ) ) {
+		if ( !NodPath_Authoring( entity ) && strcmp( key, "nod_waypoint_id" ) == 0 ) {
+			return "Imported waypoint identities are fixed; create a new waypoint instead.";
+		}
+
 		return NodPath_Restriction( ValueForKey( entity, "classname" ), key );
+	}
+
+	if ( NodScript_Class( ValueForKey( entity, "classname" ) ) || NodScript_Field( key ) ||
+		strncmp( key, "nod_script_", 11 ) == 0 || strncmp( key, "nod_frame_", 10 ) == 0 ) {
+		return NodScript_Restriction( ValueForKey( entity, "classname" ), key, NodInspector_HasKey( entity, key ),
+			NodScript_Template( entity ) ? ValueForKey( entity, "nod_prop_15" ) : "" );
 	}
 
 	if ( strncmp( key, "nod_prop_", 9 ) == 0 || strncmp( key, "nod_raw_", 8 ) == 0 ) {
@@ -449,6 +472,15 @@ static NodPropertyInfo NodInspector_FieldInfo( const char *key ){
 	}
 
 	info = NodProperty_Info( edit_entity->eclass->comments, key );
+	if ( NodScript_Field( key ) ) {
+		return NodScript_FieldInfo( key, NodScript_Kind( edit_entity, key ), ValueForKey( edit_entity, "nod_prop_15" ) );
+	}
+
+	if ( strncmp( ValueForKey( edit_entity, "nod_id" ), "link:", 5 ) == 0 &&
+		( strcmp( key, "nod_from" ) == 0 || strcmp( key, "nod_to" ) == 0 ) ) {
+		info.name = strcmp( key, "nod_from" ) == 0 ? "From native waypoint index" : "To native waypoint index";
+	}
+
 	std::string error;
 	const NodTemplateProperty *property = NULL;
 	if ( NodInspector_IsAuthoring( edit_entity ) ) {
@@ -525,7 +557,8 @@ static bool NodInspector_Matches( const char *text, GtkWidget *search ){
 static bool NodInspector_PropertyVisible( const char *key, const NodPropertyInfo &info ){
 	const bool searching = nodPropertySearch && *gtk_entry_get_text( GTK_ENTRY( nodPropertySearch ) );
 	const bool technical = nodTechnical && gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( nodTechnical ) );
-	return NodProperty_Visible( key, info.storage, technical, searching ) &&
+	return ( NodScript_Field( key ) || NodScript_Class( ValueForKey( edit_entity, "classname" ) ) ||
+		NodProperty_Visible( key, info.storage, technical, searching ) ) &&
 		( NodInspector_Matches( key, nodPropertySearch ) || NodInspector_Matches( info.name.c_str(), nodPropertySearch ) ||
 			NodInspector_Matches( NodProperty_DisplayName( key, info.name ).c_str(), nodPropertySearch ) );
 }
@@ -571,7 +604,8 @@ static bool NodInspector_Apply( const char *inputKey, const char *inputValue ){
 		return true;
 	}
 
-	if ( authoring && strcmp( key, "origin" ) != 0 && strcmp( key, "angles" ) != 0 ) {
+	if ( authoring && strcmp( key, "origin" ) != 0 && strcmp( key, "angles" ) != 0 &&
+		!NodScript_Field( key ) && strcmp( key, "targetname" ) != 0 ) {
 		std::vector<const NodTemplateChoice *> templates;
 		std::string error;
 		for ( size_t i = 0; i < entities.size(); ++i ) {
@@ -604,7 +638,11 @@ static bool NodInspector_Apply( const char *inputKey, const char *inputValue ){
 			NodInspector_IsNative( entity ) ? NodInspector_Restriction( entity, key )
 			: _( "Native and ordinary entities cannot be edited together." );
 		if ( !error ) {
-			error = NodPath_Authoring( entity ) ? NodPath_Validate( key, value ) :
+			error = NodScript_Class( ValueForKey( entity, "classname" ) ) || NodScript_Field( key ) ||
+				strcmp( key, "targetname" ) == 0 ?
+				NodScript_Validate( key, value, NodScript_Kind( entity, key ), ValueForKey( entity, "classname" ),
+					NodScript_Template( entity ) ? ValueForKey( entity, "nod_prop_15" ) : "" ) :
+				NodPath_Editable( entity ) ? NodPath_Validate( key, value ) :
 			NodProperty_Validate( key, value, NodProperty_Info( entity->eclass->comments, key ) );
 		}
 
@@ -833,6 +871,9 @@ void FillClassList(){
 
 	gpointer previous = NodInspector_Enabled() ? NodInspectorView_SharedTarget( GTK_TREE_VIEW( EntWidgets[EntList] ), NULL, true ) : NULL;
 	gtk_list_store_clear( store );
+	if ( nodHandlerRow ) {
+		gtk_widget_hide( nodHandlerRow );
+	}
 
 	for ( eclass_t* e = eclass ; e ; e = e->next )
 	{
@@ -926,12 +967,31 @@ void SetKeyValuePairs( bool bClearMD3 ){
 	std::string metadataError;
 	const NodTemplateChoice *metadata = NodInspector_Enabled() && NodInspector_IsAuthoring( edit_entity )
 		? NodInspector_Metadata( edit_entity, metadataError ) : NULL;
+	if ( nodHandlerRow && metadata && !metadata->handlers.empty() && NodInspector_Selection().size() == 1 ) {
+		GtkListStore *handlers = GTK_LIST_STORE( gtk_combo_box_get_model( GTK_COMBO_BOX( nodHandler ) ) );
+		gtk_list_store_clear( handlers );
+		gtk_combo_box_append_text( GTK_COMBO_BOX( nodHandler ), _( "None (template default)" ) );
+		int active = 0, index = 1;
+		for ( std::map<std::string, std::map<std::string, std::string> >::const_iterator handler = metadata->handlers.begin();
+			handler != metadata->handlers.end(); ++handler, ++index ) {
+			gtk_combo_box_append_text( GTK_COMBO_BOX( nodHandler ), handler->first.c_str() );
+			if ( handler->first == ValueForKey( edit_entity, "nod_prop_15" ) ) {
+				active = index;
+			}
+		}
+
+		gtk_combo_box_set_active( GTK_COMBO_BOX( nodHandler ), active );
+		gtk_widget_show_all( nodHandlerRow );
+	}
 	const NodInstanceRecord *native = NodInspector_Enabled() && !metadata && !NodInspector_IsAuthoring( edit_entity ) &&
 		strncmp( ValueForKey( edit_entity, "nod_id" ), "nsd:", 4 ) == 0
 		? NodInspector_InstanceMetadata( edit_entity, metadataError ) : NULL;
 	for ( epair_t* epair = edit_entity->epairs ; epair ; epair = epair->next )
 	{
 		NodPropertyInfo info = NodProperty_Info( edit_entity->eclass->comments, epair->key );
+		if ( NodScript_Field( epair->key ) ) {
+			info = NodScript_FieldInfo( epair->key, NodScript_Kind( edit_entity, epair->key ), ValueForKey( edit_entity, "nod_prop_15" ) );
+		}
 		const NodTemplateProperty *property = metadata ? NodTemplate_Property( *metadata, epair->key ) : NULL;
 		const NodTemplateProperty *local = native ? NodInstance_Property( native->local, epair->key ) : NULL;
 		if ( property ) { info.name = property->name; info.storage = property->storage; }
@@ -2497,6 +2557,36 @@ static void NodInspector_Place( GtkWidget *, gpointer ){
 	CreateEntity();
 }
 
+static void NodInspector_SetHandler( GtkWidget *, gpointer ){
+	const std::vector<entity_t *> selection = NodInspector_Selection();
+	std::string error;
+	const NodTemplateChoice *choice = selection.size() == 1 && NodInspector_IsAuthoring( selection[0] ) ?
+		NodInspector_Metadata( selection[0], error ) : NULL;
+	if ( !choice ) {
+		if ( error.empty() ) {
+			error = "Select one NOT-backed placement.";
+		}
+	} else {
+		gchar *text = gtk_combo_box_get_active_text( GTK_COMBO_BOX( nodHandler ) );
+		const std::string handler = gtk_combo_box_get_active( GTK_COMBO_BOX( nodHandler ) ) > 0 && text ? text : "";
+		g_free( text );
+		if ( *ValueForKey( selection[0], "nod_script_authoring" ) &&
+			gtk_MessageBox( g_pGroupDlg->m_pWidget, _( "Replace all native handler parameters and frames with defaults? Links will be cleared." ),
+				_( "Replace native handler" ), MB_YESNO ) != IDYES ) {
+			return;
+		}
+
+		if ( NodScript_SetHandler( selection[0], *choice, handler, error ) ) {
+			Sys_MarkMapModified();
+			SetKeyValuePairs();
+			return;
+		}
+	}
+
+	Sys_FPrintf( SYS_WRN, "Native handler: %s\n", error.c_str() );
+	gtk_MessageBox( g_pGroupDlg->m_pWidget, error.c_str(), _( "Native handler not applied" ), MB_OK );
+}
+
 static GtkWidget *NodInspector_SharedSection( GtkWidget *parent, bool browsing ){
 	GtkWidget *content = gtk_vbox_new( FALSE, 5 );
 	GtkWidget *scope = gtk_label_new( browsing ?
@@ -2819,6 +2909,15 @@ void GroupDlg::Create(){
 				gtk_misc_set_alignment( GTK_MISC( nodSelectionLabel ), 0, 0.5 );
 				gtk_box_pack_start( GTK_BOX( vbox ), nodSelectionLabel, FALSE, FALSE, 0 );
 				gtk_widget_show( nodSelectionLabel );
+				nodHandlerRow = gtk_hbox_new( FALSE, 5 );
+				gtk_box_pack_start( GTK_BOX( vbox ), nodHandlerRow, FALSE, FALSE, 0 );
+				GtkWidget *handlerLabel = gtk_label_new( _( "Native handler" ) );
+				gtk_box_pack_start( GTK_BOX( nodHandlerRow ), handlerLabel, FALSE, FALSE, 0 );
+				nodHandler = gtk_combo_box_new_text();
+				gtk_box_pack_start( GTK_BOX( nodHandlerRow ), nodHandler, TRUE, TRUE, 0 );
+				nodHandlerApply = gtk_button_new_with_label( _( "Initialize / reset" ) );
+				gtk_box_pack_start( GTK_BOX( nodHandlerRow ), nodHandlerApply, FALSE, FALSE, 0 );
+				g_signal_connect( G_OBJECT( nodHandlerApply ), "clicked", G_CALLBACK( NodInspector_SetHandler ), NULL );
 			}
 
 			{

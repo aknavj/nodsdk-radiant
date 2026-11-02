@@ -1,0 +1,29 @@
+nodscript 1;
+
+// Use with trigger_arena_runtime/source/arena_layout.map.
+// Press the north wall terminal: cue now, one marine after two seconds.
+console script_terminal {
+    origin (-3, 9.5, -2);
+    angles (0, 180, 0);
+    target alert_sequence;
+}
+
+sound alert_cue {
+    origin (-3, 8.7, -1);
+    cue "music_stinger";
+}
+
+enemy marine_pad {
+    origin (20, 0, -2);
+    angles (0, 180, 0);
+    template "Marine";
+    destination (14, 0, -2);
+    limit 25;
+}
+
+sequence alert_sequence {
+    origin (-3, 8.7, -1);
+    trigger alert_cue;
+    wait 2;
+    trigger marine_pad;
+}

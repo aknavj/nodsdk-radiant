@@ -152,6 +152,20 @@ inline bool ModelScale_Scaled( const char *uniform, const char *axes, const floa
 	return true;
 }
 
+inline void ModelTransform_NativeAngles( const float editor[3], float native[3] ){
+	const double radians = 0.017453292519943295;
+	const double x = editor[2] * radians, y = editor[0] * radians, z = editor[1] * radians;
+	const double sx = sin( x ), cx = cos( x ), sy = sin( y ), cy = cos( y ), sz = sin( z ), cz = cos( z );
+	// Native frames use ZXY Euler angles, unlike the editor's pitch/yaw/roll.
+	const double nx = asin( fmax( -1.0, fmin( 1.0, sx * cz - cx * sy * sz ) ) );
+	const double ny = fabs( cos( nx ) ) > 1e-10 ? atan2( cx * sy * cz + sx * sz, cx * cy ) :
+		atan2( sy, cy * cz );
+	const double nz = fabs( cos( nx ) ) > 1e-10 ? atan2( cy * sz, sx * sy * sz + cx * cz ) : 0;
+	native[0] = static_cast<float>( nx / radians );
+	native[1] = static_cast<float>( ny / radians );
+	native[2] = static_cast<float>( nz / radians );
+}
+
 inline bool ModelRotation_Rotated( const float euler[3], int axis, float degrees, float angles[3] ){
 	if ( axis < 0 || axis > 2 || !( degrees >= -FLT_MAX && degrees <= FLT_MAX ) ) {
 		return false;

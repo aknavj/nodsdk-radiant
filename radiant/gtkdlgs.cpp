@@ -1158,6 +1158,29 @@ void DoNodConvert(){
 
 	if ( remembered.map != currentmap ) {
 		remembered.mapName.clear();
+		remembered.sidecar.clear();
+	}
+
+	remembered.sourceBacked = false;
+	const char *scriptReference = world_entity ? ValueForKey( world_entity, "nod_script_file" ) : "";
+	remembered.script = !*scriptReference ? "" : g_path_is_absolute( scriptReference ) ?
+		scriptReference : NodCompile_Join( workspace, scriptReference );
+	for ( entity_t *entity = entities.next; entity != &entities; entity = entity->next ) {
+		if ( strcmp( ValueForKey( entity, "classname" ), "nod_scene" ) == 0 &&
+			strcmp( ValueForKey( entity, "nod_id" ), "scene" ) == 0 ) {
+			remembered.sourceBacked = true;
+			break;
+		}
+	}
+
+	if ( remembered.sourceBacked ) {
+		remembered.lighting = false;
+		remembered.physicsMarginOverride = false;
+		if ( remembered.sidecar.empty() ) {
+			const std::string filename = currentmap;
+			const size_t extension = filename.rfind( '.' );
+			remembered.sidecar = filename.substr( 0, extension ) + ".nodsrc";
+		}
 	}
 
 	GtkWidget *dialog = gtk_dialog_new_with_buttons( _( "Convert NOD level" ),
@@ -1167,7 +1190,7 @@ void DoNodConvert(){
 	GtkWidget *box = gtk_vbox_new( FALSE, 8 );
 	gtk_container_set_border_width( GTK_CONTAINER( box ), 10 );
 	gtk_container_add( GTK_CONTAINER( gtk_dialog_get_content_area( GTK_DIALOG( dialog ) ) ), box );
-	GtkWidget *table = gtk_table_new( 5, 2, FALSE );
+	GtkWidget *table = gtk_table_new( remembered.sourceBacked ? 7 : 6, 2, FALSE );
 	gtk_table_set_row_spacings( GTK_TABLE( table ), 5 );
 	gtk_table_set_col_spacings( GTK_TABLE( table ), 10 );
 	gtk_box_pack_start( GTK_BOX( box ), table, FALSE, FALSE, 0 );
@@ -1176,6 +1199,50 @@ void DoNodConvert(){
 	GtkWidget *tools = NodProject_PathRow( table, 2, _( "SDK compiler binaries" ), remembered.tools.c_str(), true );
 	GtkWidget *assets = NodProject_PathRow( table, 3, _( "Read-only asset root" ), remembered.assets.c_str(), true );
 	GtkWidget *output = NodProject_PathRow( table, 4, _( "Output folder" ), remembered.output.c_str(), true );
+	GtkWidget *sidecar = NULL;
+	if ( remembered.sourceBacked ) {
+		GtkWidget *row = gtk_hbox_new( FALSE, 5 );
+		GtkWidget *label = gtk_label_new( _( "Matching source sidecar" ) );
+		gtk_misc_set_alignment( GTK_MISC( label ), 0, 0.5 );
+		gtk_table_attach( GTK_TABLE( table ), label, 0, 1, 5, 6, GTK_FILL, GTK_FILL, 0, 0 );
+		gtk_table_attach( GTK_TABLE( table ), row, 1, 2, 5, 6,
+			static_cast<GtkAttachOptions>( GTK_EXPAND | GTK_FILL ), GTK_FILL, 0, 0 );
+		sidecar = gtk_file_chooser_button_new( _( "Choose matching .nodsrc sidecar" ), GTK_FILE_CHOOSER_ACTION_OPEN );
+		GtkFileFilter *filter = gtk_file_filter_new();
+		gtk_file_filter_add_pattern( filter, "*.nodsrc" );
+		gtk_file_filter_add_pattern( filter, "*.NODSRC" );
+		gtk_file_chooser_add_filter( GTK_FILE_CHOOSER( sidecar ), filter );
+		gtk_file_chooser_set_filename( GTK_FILE_CHOOSER( sidecar ), remembered.sidecar.c_str() );
+		gtk_box_pack_start( GTK_BOX( row ), sidecar, TRUE, TRUE, 0 );
+		GtkWidget *note = gtk_label_new( _( "Imported scene: NODscene preserves NIL geometry and lighting; edits apply to NSD/NPD." ) );
+		gtk_misc_set_alignment( GTK_MISC( note ), 0, 0.5 );
+		gtk_label_set_line_wrap( GTK_LABEL( note ), TRUE );
+		gtk_box_pack_start( GTK_BOX( box ), note, FALSE, FALSE, 0 );
+	}
+
+	const guint scriptRow = remembered.sourceBacked ? 6 : 5;
+	GtkWidget *scriptLabel = gtk_label_new( _( "Script source (optional)" ) );
+	gtk_misc_set_alignment( GTK_MISC( scriptLabel ), 0, 0.5 );
+	gtk_table_attach( GTK_TABLE( table ), scriptLabel, 0, 1, scriptRow, scriptRow + 1, GTK_FILL, GTK_FILL, 0, 0 );
+	GtkWidget *scriptBox = gtk_hbox_new( FALSE, 5 );
+	gtk_table_attach( GTK_TABLE( table ), scriptBox, 1, 2, scriptRow, scriptRow + 1,
+		static_cast<GtkAttachOptions>( GTK_EXPAND | GTK_FILL ), GTK_FILL, 0, 0 );
+	GtkWidget *script = gtk_file_chooser_button_new( _( "Choose NODScript source" ), GTK_FILE_CHOOSER_ACTION_OPEN );
+	GtkFileFilter *scriptFilter = gtk_file_filter_new();
+	gtk_file_filter_add_pattern( scriptFilter, "*.nods" );
+	gtk_file_filter_add_pattern( scriptFilter, "*.NODS" );
+	gtk_file_chooser_add_filter( GTK_FILE_CHOOSER( script ), scriptFilter );
+	if ( !remembered.script.empty() ) {
+		gtk_file_chooser_set_filename( GTK_FILE_CHOOSER( script ), remembered.script.c_str() );
+	}
+	gtk_box_pack_start( GTK_BOX( scriptBox ), script, TRUE, TRUE, 0 );
+	GtkWidget *clearScript = gtk_button_new_with_label( _( "Clear" ) );
+	g_signal_connect( clearScript, "clicked", G_CALLBACK( +[]( GtkButton *, gpointer data ){
+		gtk_file_chooser_unselect_all( GTK_FILE_CHOOSER( data ) );
+	} ), script );
+	gtk_box_pack_start( GTK_BOX( scriptBox ), clearScript, FALSE, FALSE, 0 );
+	gtk_widget_set_tooltip_text( script, _( "Version 1 native-compatible script code. The MAP remembers the source path; export snapshots and compiles it before level conversion." ) );
+
 	NodExportDialog controls;
 	controls.Build( box, remembered );
 	GtkWidget *status = gtk_label_new( _( "Ready to export. Saves current edits; selected outputs share one MAP snapshot." ) );
@@ -1206,6 +1273,35 @@ void DoNodConvert(){
 		options.tools = gtk_entry_get_text( GTK_ENTRY( tools ) );
 		options.assets = gtk_entry_get_text( GTK_ENTRY( assets ) );
 		options.output = gtk_entry_get_text( GTK_ENTRY( output ) );
+		gchar *scriptFilename = gtk_file_chooser_get_filename( GTK_FILE_CHOOSER( script ) );
+		options.script = scriptFilename ? scriptFilename : "";
+		g_free( scriptFilename );
+		if ( sidecar ) {
+			gchar *filename = gtk_file_chooser_get_filename( GTK_FILE_CHOOSER( sidecar ) );
+			options.sidecar = filename ? filename : "";
+			g_free( filename );
+		}
+		const std::string resolvedWorkspace = NodCompile_Resolve( workspace );
+		const std::string resolvedScript = options.script.empty() ? "" : NodCompile_Resolve( options.script );
+		const std::string storedScript = !resolvedScript.empty() && NodCompile_Contains( resolvedWorkspace, resolvedScript ) ?
+			resolvedScript.substr( resolvedWorkspace.size() + 1 ) : resolvedScript;
+		if ( storedScript.size() > 255 ) {
+			gtk_MessageBox( dialog, _( "Script reference exceeds the MAP's 255-byte value limit." ),
+				_( "Cannot convert NOD level" ), MB_OK | MB_ICONERROR );
+			continue;
+		}
+		if ( world_entity && storedScript != ValueForKey( world_entity, "nod_script_file" ) ) {
+			Undo_Start( "Set NOD script source" );
+			Undo_AddEntity( world_entity );
+			if ( storedScript.empty() ) {
+				DeleteKey( world_entity, "nod_script_file" );
+			} else {
+				SetKeyValue( world_entity, "nod_script_file", storedScript.c_str() );
+			}
+			Undo_EndEntity( world_entity );
+			Undo_End();
+			Sys_MarkMapModified();
+		}
 		if ( modified || strcmp( currentmap, "unnamed.map" ) == 0 ) {
 			g_pParentWnd->OnFileSave();
 		}

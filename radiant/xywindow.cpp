@@ -55,6 +55,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "nodlightplacement.h"
 #include "nodtemplateplacement.h"
 #include "nodpathplacement.h"
+#include "nodscriptplacement.h"
 #include "nodview.h"
 #include "nodsurface.h"
 #include "filters.h"
@@ -480,6 +481,21 @@ qboolean IsModelEntity( const char *name )
 void CreateEntityFromName( const char* name, const vec3_t origin ){
 	entity_t *e;
 	brush_t* b;
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME && NodScript_Class( name ) ) {
+		std::string error;
+		e = NodScript_Create( name, origin, error );
+		if ( !e ) {
+			Sys_FPrintf( SYS_WRN, "Native control: %s\n", error.c_str() );
+			gtk_MessageBox( g_pParentWnd->m_pWidget, error.c_str(), _( "Control not placed" ), MB_OK );
+		} else {
+			edit_entity = e;
+			Sys_MarkMapModified();
+			Sys_UpdateWindows( W_ALL );
+		}
+
+		return;
+	}
+
 	if ( g_pGameDescription->mGameFile == SCGHOST_GAME && strcmp( name, "nod_static_light" ) == 0 ) {
 		std::string error;
 		e = NodLight_Create( origin, error );

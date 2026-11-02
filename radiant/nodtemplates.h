@@ -31,6 +31,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include <vector>
 #include <set>
 #include <utility>
+#include <map>
 #include <algorithm>
 #include <glib.h>
 #include <libxml/parser.h>
@@ -47,6 +48,7 @@ struct NodTemplateChoice {
 	std::string name, archive, type, properties, model, problem, context, parent, modifiers;
 	std::string removalSlot, removalPayload, removalOrder;
 	std::vector<NodTemplateProperty> effective;
+	std::map<std::string, std::map<std::string, std::string> > handlers;
 	bool placeable, detailed;
 	NodTemplateChoice() : placeable( false ), detailed( false ) {}
 };
@@ -282,6 +284,38 @@ inline bool NodTemplate_ParseCatalog( const char *bytes, size_t size, NodTemplat
 
 					if ( !choice.detailed ) {
 						error = "Invalid SDK property metadata element."; break;
+					}
+
+					if ( property->type == XML_ELEMENT_NODE && xmlStrEqual( property->name, BAD_CAST "handler" ) ) {
+						const std::string handler = NodTemplate_Attribute( property, "name" );
+						if ( !NodTemplate_MapString( handler, 31 ) || choice.handlers.count( handler ) || choice.handlers.size() >= 4 ) {
+							error = "Invalid or duplicate SDK handler schema."; break;
+						}
+
+						std::map<std::string, std::string> fields;
+						for ( xmlNodePtr field = property->children; field; field = field->next ) {
+							const std::string key = NodTemplate_Attribute( field, "key" );
+							const std::string value = NodTemplate_Attribute( field, "value" );
+							if ( field->type != XML_ELEMENT_NODE || !xmlStrEqual( field->name, BAD_CAST "field" ) ||
+								field->children || fields.size() >= 128 || value.size() > 255 ||
+								( key.compare( 0, 11, "nod_script_" ) != 0 && key.compare( 0, 10, "nod_frame_" ) != 0 ) ||
+								!NodTemplate_MapString( key, 63 ) || !fields.insert( std::make_pair( key, value ) ).second ) {
+								error = "Invalid SDK handler field."; break;
+							}
+						}
+
+						if ( fields["nod_script_authoring"] != "parameters-v1" ||
+							!NodTemplate_Number( fields["nod_script_param_count"], 128 ) ||
+							!NodTemplate_Number( fields["nod_frame_count"], 1024 ) ) {
+							error = "Incomplete SDK handler schema.";
+						}
+
+						if ( !error.empty() ) {
+							break;
+						}
+
+						choice.handlers.insert( std::make_pair( handler, fields ) );
+						continue;
 					}
 
 					NodTemplateProperty value;
