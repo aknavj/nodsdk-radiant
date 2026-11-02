@@ -41,10 +41,10 @@ struct NodEnvironmentField {
 
 /*
  */
-inline const std::array<NodEnvironmentField, 10> &NodEnvironment_Fields(){
-	static const std::array<NodEnvironmentField, 10> fields{{
-		{ "nod_music", "Music", "Optional filename, at most 31 ASCII bytes: letters, digits, _, -, .; no paths or leading/trailing dot. Playback is not verified." },
-		{ "nod_ambient_loop", "Ambient loop", "Optional audio filename, at most 31 ASCII bytes; no paths or leading/trailing dot. Playback is not verified." },
+inline const std::array<NodEnvironmentField, 11> &NodEnvironment_Fields(){
+	static const std::array<NodEnvironmentField, 11> fields{{
+		{ "nod_music", "Music reference", "Optional stored reference, at most 31 ASCII bytes: letters, digits, _, -, .; no paths or leading/trailing dot. Does not override native alarm/score cue selection." },
+		{ "nod_ambient_loop", "Ambient loop cue", "Cue in the loaded level sound bank, at most 31 ASCII bytes; no paths or leading/trailing dot. Last extension is stripped. Test Room loads Sounds/1_0_0.xsb and .xwb." },
 		{ "nod_sky_model", "Sky model", "Optional .nod filename, at most 31 ASCII bytes; no paths. Does not deploy assets or establish rendering." },
 		{ "nod_sky_animation", "Sky animation", "Optional .nad filename, at most 31 ASCII bytes; independent of sky model. Animation playback is not verified." },
 		{ "nod_fog_mode", "Fog mode", "Blank or none: no fog; remove color/start/end. Linear mode requires all three fields. Case-sensitive: none or linear." },
@@ -52,7 +52,8 @@ inline const std::array<NodEnvironmentField, 10> &NodEnvironment_Fields(){
 		{ "nod_fog_start", "Fog start", "Finite nonnegative distance in MAP units. Required only in linear mode." },
 		{ "nod_fog_end", "Fog end", "Finite distance greater than fog start after float32 rounding. Required only in linear mode." },
 		{ "nod_far_clip", "Far clip", "Finite nonnegative distance in MAP units. Blank or 0: native default. Independent of physics bounds." },
-		{ "nod_reverb", "Reverb preset ID", "Canonical decimal integer 0..25. Blank: native default. No assumed off meaning for 0; audible effects are not verified." }
+		{ "nod_reverb", "Reverb preset ID", "Canonical decimal integer 0..25. Blank: native default. No assumed off meaning for 0; audible effects are not verified." },
+		{ "nod_sky_unmasked", "Unmasked sky", "0 or blank: native sky-surface stencil. 1: draw sky across the viewport, for open rooms without sky-mask surfaces. Still requires deployed sky assets." }
 	}};
 	return fields;
 }
@@ -128,6 +129,10 @@ inline std::string NodEnvironment_Validate( const NodEnvironmentValues &values )
 			if ( !ModelTransform_Parse( value.c_str(), 3, parsed, true ) ||
 				parsed[0] < 0 || parsed[0] > 255 || parsed[1] < 0 || parsed[1] > 255 ||
 				parsed[2] < 0 || parsed[2] > 255 ) {
+				error = field.hint;
+			}
+		} else if ( key == "nod_sky_unmasked" ) {
+			if ( value != "0" && value != "1" ) {
 				error = field.hint;
 			}
 		} else if ( key == "nod_reverb" ) {

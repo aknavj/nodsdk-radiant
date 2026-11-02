@@ -36,7 +36,7 @@ struct NodEnvironmentDialog {
 	
 	/*
 	*/
-	std::array<GtkWidget *, 10> entries;
+	std::array<GtkWidget *, 11> entries;
 	NodEnvironmentValues original;
 
 	/*
