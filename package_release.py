@@ -124,9 +124,11 @@ def package_release(root, sdk, modules, runtime_files, studio):
             copy_binary(filename, tools / filename.name, sdk_machine)
         for filename in ("README.md", "CHANGELOG.md"):
             shutil.copy2(sdk / filename, tools / filename)
-        for filename in ("LICENSE", "COPYING"):
+        for filename in ("LICENSE", "LICENSE.txt", "COPYING"):
             if (sdk / filename).is_file():
                 shutil.copy2(sdk / filename, tools / filename)
+        if (sdk / "licenses").is_dir():
+            shutil.copytree(sdk / "licenses", tools / "licenses")
 
         versions = [directory for directory in (studio / "VC" / "Redist" / "MSVC").iterdir()
                     if re.fullmatch(r"\d+(?:\.\d+)+", directory.name)]

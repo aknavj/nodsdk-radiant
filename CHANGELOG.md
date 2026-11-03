@@ -4,10 +4,11 @@ Notable changes to this fork, following [Keep a Changelog](https://keepachangelo
 
 Derived from upstream [GtkRadiant 1.6.7](https://github.com/TTimo/GtkRadiant).
 
-## 0.6.8-preview - T.B.D
+## 0.6.8-preview - 2026-11-03
 
 ### Fixed
 
+- Preserve the bundled SDK license and dependency notices in portable release packages.
 - Fit classic SC Ghost MAP textures from the actual face projection at any rotation, avoiding collapsed scales at 90 degrees, preserving mirrored axes and retaining fractional shifts on meter-scale brushes.
 - Preserve full brush-primitive UV mappings when rotating textures in the SC Ghost Surface Inspector or through rotation shortcuts, retaining shear, mirroring and relative scale instead of rebuilding a lossy shift/scale/rotation approximation.
 - Keep Surface Inspector commit/undo snapshots normalized to the same texture size across repeated edits. Preserve fitted mappings while keeping axial/reset/captured-UV presets explicit replacements.

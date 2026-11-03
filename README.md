@@ -32,7 +32,7 @@ cd install
 ./radiant.exe  # Windows; use ./radiant.bin on Linux
 ```
 
-Windows paths such as `'C:\SDK\OpenNOD-SDK-0.6.7-windows-x64'` are accepted.
+Windows paths such as `'C:\SDK\OpenNOD-SDK-0.6.8-windows-x64'` are accepted.
 
 | Option | Environment variable | Default |
 | --- | --- | --- |
@@ -49,10 +49,10 @@ profile, and verifies NOT templates. BSPC and Quake map compilers are not built.
 ## Distribution build (Windows)
 
 ```sh
-bash build.sh --package --sdk-dir 'C:\SDK\OpenNOD-SDK-0.6.7-windows-x64'
+bash build.sh --package --sdk-dir 'C:\SDK\OpenNOD-SDK-0.6.8-windows-x64'
 ```
 
-Creates `dist/OpenNOD-Radiant-0.6.7-windows-x64/` and its ZIP for an installer
+Creates `dist/OpenNOD-Radiant-0.6.8-windows-x64/` and its ZIP for an installer
 or portable distribution. Requires Release configuration, but no game assets.
 Includes SDK editors/converters, GTK and MSVC runtimes, bundled profile, and
 license notices. Excludes personal configuration, user maps, assets, and debug files.
@@ -83,8 +83,7 @@ alongside binary releases; packaging alone does not fulfill source obligations.
   the SDK's one-unit automatic padding. This is not a player-spawn/collision fix.
 
 Environment export, physics-margin overrides, DDS-backed NSA material compilation
-and improved diagnostics require SDK binaries built from revision `5bd1c0e`
-or newer (the unreleased 0.6.8 changes). The pinned source dependency is used by
+and improved diagnostics are available in SDK 0.6.8. The pinned source dependency is used by
 the editor's native model integration; it does **not** rebuild or replace external
 SDK executables. Rebuild the SDK and select its output folder in Project Settings.
 See the [profile workflow](gamepacks/SCGhostPack/README.md#scene-environment)
@@ -113,7 +112,7 @@ remains unverified. Keep map backups and validate exports in a disposable runtim
 - [Changelog](CHANGELOG.md)
 - [Issues](https://github.com/aknavj/nodsdk-radiant/issues)
 - Based on [GtkRadiant](https://github.com/TTimo/GtkRadiant); fork version
-  **0.6.7**, aligned with OpenNOD SDK.
+  **0.6.8**, aligned with OpenNOD SDK.
 
 ## Project scope and license
 
