@@ -120,6 +120,8 @@ remains unverified. Keep map backups and validate exports in a disposable runtim
 Tools for StarCraft: Ghost map restoration and preservation, not a game remake.
 No proprietary game assets are included; their rights and licensing remain separate.
 
+StarCraft: Ghost is a trademark of Blizzard Entertainment. This is an unofficial fan project, not affiliated with or endorsed by Blizzard.
+
 Based on GtkRadiant (**GPL-2.0-or-later**), with **GPL-3.0** fork contributions.
 Some components use BSD or LGPL licenses. Preserve original copyright and license
 notices. See [LICENSE](LICENSE), [GPLv2](GPL), [GPLv3](GPL-3.0), [LGPL](LGPL),
