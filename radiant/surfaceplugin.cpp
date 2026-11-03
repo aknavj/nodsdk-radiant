@@ -234,6 +234,34 @@ void SI_SetTexdef_FaceList( texdef_to_face_t* texdef_face_list, bool b_SetUndoPo
 	}
 	}
 
+	std::vector<brushprimit_texdef_t> nodMatrices;
+	if ( nod && g_qeglobals.m_bBrushPrimitMode ) {
+		for ( texdef_to_face = texdef_face_list; texdef_to_face; texdef_to_face = texdef_to_face->next ) {
+			brushprimit_texdef_t matrix;
+			if ( bFit_to_Scale ) {
+				FakeTexCoordsToTexMat( texdef_to_face->texdef.shift, texdef_to_face->texdef.rotate,
+					texdef_to_face->texdef.scale, matrix.coords );
+			} else {
+				const bool liveApplied = NodSurface_Equal( texdef_to_face->face->texdef, texdef_to_face->texdef );
+				if ( liveApplied ) {
+					ConvertTexMatWithQTexture( &texdef_to_face->face->brushprimit_texdef,
+						texdef_to_face->face->d_texture, &matrix, NULL );
+				} else {
+					matrix = texdef_to_face->orig_bp_texdef;
+				}
+				const texdef_t &before = liveApplied ? texdef_to_face->texdef : texdef_to_face->orig_texdef;
+				const char *error = NodSurface_TransformTexMat( matrix.coords, before,
+					texdef_to_face->texdef, matrix.coords );
+				if ( error ) {
+					Sys_FPrintf( SYS_WRN, "Surface UV edit: %s\n", error );
+					gtk_MessageBox( SI_GetMainWindow(), error, "Surface UV edit", MB_OK | MB_ICONWARNING );
+					return;
+				}
+			}
+			nodMatrices.push_back( matrix );
+		}
+	}
+
 	if ( b_SetUndoPoint ) {
 		if ( !nod && g_ptrSelectedFaces.GetSize() > 1 ) {
 			Sys_FPrintf( SYS_WRN, "WARNING: Undo NOT supported for multiple face selections\n" );
@@ -259,11 +287,16 @@ void SI_SetTexdef_FaceList( texdef_to_face_t* texdef_face_list, bool b_SetUndoPo
         }
 	}
 
+	size_t nodMatrixIndex = 0;
 	for ( texdef_to_face = texdef_face_list; texdef_to_face; texdef_to_face = texdef_to_face->next )
 	{
 		{
 			brushprimit_texdef_t brushprimit_texdef;
-			FakeTexCoordsToTexMat( texdef_to_face->texdef.shift, texdef_to_face->texdef.rotate, texdef_to_face->texdef.scale, brushprimit_texdef.coords );
+			if ( nod && g_qeglobals.m_bBrushPrimitMode ) {
+				brushprimit_texdef = nodMatrices[nodMatrixIndex++];
+			} else {
+				FakeTexCoordsToTexMat( texdef_to_face->texdef.shift, texdef_to_face->texdef.rotate, texdef_to_face->texdef.scale, brushprimit_texdef.coords );
+			}
 			SetFaceTexdef( texdef_to_face->face, &texdef_to_face->texdef, &brushprimit_texdef, bFit_to_Scale, NULL, true, false );
 		}
 
@@ -291,7 +324,12 @@ void SI_SetTexdef_FaceList( texdef_to_face_t* texdef_face_list, bool b_SetUndoPo
 			for ( texdef_to_face = texdef_face_list; texdef_to_face; texdef_to_face = texdef_to_face->next )
 			{
 				texdef_to_face->orig_texdef = texdef_to_face->texdef;
-				texdef_to_face->orig_bp_texdef = texdef_to_face->face->brushprimit_texdef;
+				if ( nod && g_qeglobals.m_bBrushPrimitMode ) {
+					ConvertTexMatWithQTexture( &texdef_to_face->face->brushprimit_texdef,
+						texdef_to_face->face->d_texture, &texdef_to_face->orig_bp_texdef, NULL );
+				} else {
+					texdef_to_face->orig_bp_texdef = texdef_to_face->face->brushprimit_texdef;
+				}
 			}
 		}
 	}

@@ -268,7 +268,7 @@ inline bool NodTemplate_ParseCatalog( const char *bytes, size_t size, NodTemplat
 
 			NodBehavior behavior;
 			const char *settings[] = { "input", "first", "count", "stride", "delay", "data", "replace",
-				"start", "stop", "pulse-delay", "frame-step", "frame-orientation" };
+				"start", "stop", "pulse-delay", "frame-step", "frame-orientation", "geometry" };
 			for ( size_t i = 0; i < G_N_ELEMENTS( settings ); ++i ) {
 				if ( xmlHasProp( node, BAD_CAST settings[i] ) ) {
 					behavior.settings[settings[i]] = NodTemplate_Attribute( node, settings[i] );
@@ -292,14 +292,15 @@ inline bool NodTemplate_ParseCatalog( const char *bytes, size_t size, NodTemplat
 				}
 
 				std::map<std::string, std::string> attributes;
-				const char *names[] = { "label", "storage", "editable", "min", "max", "exclusive-min", "resource" };
+				const char *names[] = { "label", "storage", "editable", "min", "max", "exclusive-min", "resource", "allow-empty" };
 				for ( size_t i = 0; i < G_N_ELEMENTS( names ); ++i ) {
 					if ( xmlHasProp( field, BAD_CAST names[i] ) ) {
 						attributes[names[i]] = NodTemplate_Attribute( field, names[i] );
 					}
 				}
 
-				if ( ( attributes["editable"] != "0" && attributes["editable"] != "1" ) ||
+				if ( ( attributes.count( "allow-empty" ) && attributes["allow-empty"] != "0" && attributes["allow-empty"] != "1" ) ||
+					( attributes["editable"] != "0" && attributes["editable"] != "1" ) ||
 					!NodTemplate_MapString( attributes["label"], 127 ) ||
 					( attributes["storage"] != "raw" && attributes["storage"] != "uint32 bits" &&
 						attributes["storage"] != "float32" && attributes["storage"] != "object reference" &&

@@ -87,6 +87,13 @@ inline bool NodScript_SetHandler( entity_t *entity, const NodTemplateChoice &cho
 	std::string targetname = ValueForKey( entity, "targetname" );
 	if ( !handler.empty() ) {
 		fields = choice.handlers.find( handler )->second;
+		const char *bounds[] = { "nod_region_min", "nod_region_max" };
+		for ( size_t i = 0; i < G_N_ELEMENTS( bounds ); ++i ) {
+			if ( fields.count( bounds[i] ) && *ValueForKey( entity, bounds[i] ) ) {
+				fields[bounds[i]] = ValueForKey( entity, bounds[i] );
+			}
+		}
+
 		if ( targetname.empty() ) {
 			std::set<std::string> used;
 			for ( entity_t *other = entities.next; other != &entities; other = other->next ) {
@@ -128,7 +135,8 @@ inline bool NodScript_SetHandler( entity_t *entity, const NodTemplateChoice &cho
 	std::vector<std::string> oldKeys;
 	for ( epair_t *pair = entity->epairs; pair; pair = pair->next ) {
 		if ( strncmp( pair->key, "nod_script_", 11 ) == 0 || strncmp( pair->key, "nod_frame_", 10 ) == 0 ||
-			strcmp( pair->key, "nod_prop_15" ) == 0 ) {
+			strcmp( pair->key, "nod_prop_15" ) == 0 ||
+			strcmp( pair->key, "nod_region_min" ) == 0 || strcmp( pair->key, "nod_region_max" ) == 0 ) {
 			oldKeys.push_back( pair->key );
 		}
 	}

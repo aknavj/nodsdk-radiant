@@ -156,6 +156,12 @@ inline NodPropertyInfo NodScript_FieldInfo( const char *key, const char *kind, c
 inline const char *NodScript_Validate( const char *key, const char *value, const char *kind, const char *name = "",
 	const char *script = "", const NodTemplateCatalog *context = NULL ){
 	const NodBehavior *behavior = NodScript_Behavior( script );
+	if ( behavior && strcmp( kind, "1" ) == 0 &&
+		behavior->Field( key, "min" ) == "0" && behavior->Field( key, "max" ) == "1" &&
+		strcmp( value, "0" ) != 0 && strcmp( value, "1" ) != 0 ) {
+		return "Enter 0 or 1.";
+	}
+
 	if ( behavior && ( !behavior->Field( key, "min" ).empty() || !behavior->Field( key, "max" ).empty() ) ) {
 		float number[3], minimum[3], maximum[3];
 		if ( !ModelTransform_Parse( value, 1, number, true ) ||
@@ -163,6 +169,11 @@ inline const char *NodScript_Validate( const char *key, const char *value, const
 				( behavior->Field( key, "exclusive-min" ) == "1" ? number[0] <= minimum[0] : number[0] < minimum[0] ) ) ||
 			( ModelTransform_Parse( behavior->Field( key, "max" ).c_str(), 1, maximum, true ) && number[0] > maximum[0] ) ) {
 			return "Value is outside the SDK behavior's permitted numeric range.";
+		}
+
+		if ( strcmp( kind, "1" ) == 0 &&
+			( !NodProperty_Unsigned( value ) || ( value[0] == '0' && value[1] ) ) ) {
+			return "Enter a canonical unsigned integer within the SDK behavior's permitted range.";
 		}
 	}
 
@@ -229,10 +240,51 @@ inline const char *NodScript_Validate( const char *key, const char *value, const
 		return number >= 1 && number <= 25 ? NULL : "Enter a lifetime spawn limit from 1 through 25.";
 	}
 
-	if ( strcmp( key, "nod_cue" ) == 0 || ( behavior && behavior->Field( key, "resource" ) == "cue" ) ) {
+	if ( behavior && ( behavior->Field( key, "resource" ) == "reverb" ||
+		behavior->Field( key, "resource" ) == "save-marker" ) ) {
+		const bool marker = behavior->Field( key, "resource" ) == "save-marker";
+		if ( strcmp( value, "-1" ) == 0 ||
+			( NodProperty_Unsigned( value ) && !( value[0] == '0' && value[1] ) &&
+				strtoul( value, NULL, 10 ) <= ( marker ? 15 : 25 ) ) ) {
+			return NULL;
+		}
+
+		return marker ? "Enter -1 for no marker registration, or a canonical objective marker ID from 0 through 15." :
+			"Enter -1 to keep the current reverb, or a canonical preset ID from 0 through 25.";
+	}
+
+	if ( strcmp( key, "nod_cue" ) == 0 ||
+		( behavior && ( behavior->Field( key, "resource" ) == "cue" || behavior->Field( key, "resource" ) == "ambient" ||
+			behavior->Field( key, "resource" ) == "native-resource" ) ) ) {
+		if ( behavior && ( behavior->Field( key, "resource" ) == "ambient" ||
+			behavior->Field( key, "allow-empty" ) == "1" ) && !*value ) {
+			return NULL;
+		}
+
 		if ( !NodScript_Reference( value ) || strlen( value ) > 31 || strchr( value, ':' ) ||
 			value[0] == '.' || value[strlen( value ) - 1] == '.' ) {
-			return "Enter a cue in the deployed level bank: 1..31 ASCII letters/digits/underscore/hyphen/dot, without a path.";
+			return behavior && behavior->Field( key, "resource" ) == "native-resource" ?
+				"Enter a deployed resource/key: 1..31 ASCII letters/digits/underscore/hyphen/dot, without a path." :
+				"Enter a cue in the deployed level bank: 1..31 ASCII letters/digits/underscore/hyphen/dot, without a path.";
+		}
+
+		return NULL;
+	}
+
+	if ( behavior && behavior->Field( key, "resource" ) == "objective" ) {
+		if ( strlen( value ) > 31 || strspn( value, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_" ) != strlen( value ) ) {
+			return "Enter an objective key from the active mission's OBJECTIVE entries (up to 31 ASCII letters/digits/underscores), or leave blank.";
+		}
+
+		return NULL;
+	}
+
+	if ( behavior && behavior->Field( key, "resource" ) == "cutscene" ) {
+		const char *dot = strchr( value, '.' );
+		if ( !*value || strlen( value ) > 31 || dot == value ||
+			strspn( value, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-." ) != strlen( value ) ||
+			( dot && g_ascii_strcasecmp( dot, ".ncs" ) != 0 ) ) {
+			return "Enter a deployed cutscene name: 1..31 ASCII letters/digits/underscore/hyphen, optionally ending in .ncs; no path.";
 		}
 
 		return NULL;

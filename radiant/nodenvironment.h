@@ -45,7 +45,7 @@ inline const std::array<NodEnvironmentField, 11> &NodEnvironment_Fields(){
 	static const std::array<NodEnvironmentField, 11> fields{{
 		{ "nod_music", "Music reference", "Optional stored reference, at most 31 ASCII bytes: letters, digits, _, -, .; no paths or leading/trailing dot. Does not override native alarm/score cue selection." },
 		{ "nod_ambient_loop", "Ambient loop cue", "Cue in the loaded level sound bank, at most 31 ASCII bytes; no paths or leading/trailing dot. Last extension is stripped. Test Room loads Sounds/1_0_0.xsb and .xwb." },
-		{ "nod_sky_model", "Sky model", "Optional .nod filename, at most 31 ASCII bytes; no paths. Does not deploy assets or establish rendering." },
+		{ "nod_sky_model", "Sky model", "Optional .nod filename, at most 31 ASCII bytes; no paths. Static textured-camera preview when assets resolve. Does not deploy assets or guarantee native rendering." },
 		{ "nod_sky_animation", "Sky animation", "Optional .nad filename, at most 31 ASCII bytes; independent of sky model. Animation playback is not verified." },
 		{ "nod_fog_mode", "Fog mode", "Blank or none: no fog; remove color/start/end. Linear mode requires all three fields. Case-sensitive: none or linear." },
 		{ "nod_fog_color", "Fog color (RGB)", "Three finite RGB values in 0..255, not 0..1. Required only in linear mode." },

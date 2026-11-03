@@ -3753,6 +3753,89 @@ void Brush_MakeSidedSphere( int sides ){
 	Sys_UpdateWindows( W_ALL );
 }
 
+static const char *Face_FitTexture_Nod( face_t *face, int nHeight, int nWidth ){
+	if ( !face->d_texture || face->d_texture->width <= 0 || face->d_texture->height <= 0 ) {
+		return "Cannot fit UVs without a texture with positive dimensions.";
+	}
+
+	// Use the renderer's projection, not a rotated world-space bounding box.
+	face_t projection;
+	projection.plane = face->plane;
+	projection.texdef = face->texdef;
+	projection.d_texture = face->d_texture;
+	projection.texdef.shift[0] = projection.texdef.shift[1] = 0;
+	projection.texdef.scale[0] = projection.texdef.scale[1] = 1;
+	float vectors[2][4];
+	Face_TextureVectors( &projection, vectors );
+
+	NodSurfacePreset fitted = NodSurface_Capture( face->texdef );
+	const double repeats[2] = { static_cast<double>( nWidth ), static_cast<double>( nHeight ) };
+	const double dimensions[2] = { static_cast<double>( face->d_texture->width ),
+		static_cast<double>( face->d_texture->height ) };
+	for ( int axis = 0; axis < 2; ++axis ) {
+		double lower = DBL_MAX, upper = -DBL_MAX;
+		for ( int point = 0; point < face->face_winding->numpoints; ++point ) {
+			double uv = 0;
+			for ( int component = 0; component < 3; ++component ) {
+				uv += static_cast<double>( face->face_winding->points[point][component] ) * vectors[axis][component];
+			}
+			if ( !( uv >= -DBL_MAX && uv <= DBL_MAX ) ) {
+				return "Cannot fit nonfinite face UV coordinates.";
+			}
+			if ( uv < lower ) {
+				lower = uv;
+			}
+			if ( uv > upper ) {
+				upper = uv;
+			}
+		}
+
+		const double span = upper - lower;
+		if ( !( span > 0 ) ) {
+			return "Cannot fit a face with a zero UV span.";
+		}
+		const double scale = ( fitted.scale[axis] < 0 ? -span : span ) / repeats[axis];
+		if ( !( scale >= -FLT_MAX && scale <= FLT_MAX ) ) {
+			return "The fitted UV mapping exceeds the float32 range.";
+		}
+		fitted.scale[axis] = static_cast<float>( scale );
+		fitted.shift[axis] = 0;
+	}
+
+	const char *error = NodSurface_Validate( fitted, false, true );
+	if ( error ) {
+		return error;
+	}
+
+	// Align using the final float32 projection, including its rounded scales.
+	projection.texdef.scale[0] = fitted.scale[0];
+	projection.texdef.scale[1] = fitted.scale[1];
+	Face_TextureVectors( &projection, vectors );
+	for ( int axis = 0; axis < 2; ++axis ) {
+		float lower = FLT_MAX;
+		for ( int point = 0; point < face->face_winding->numpoints; ++point ) {
+			const float uv = DotProduct( face->face_winding->points[point], vectors[axis] );
+			if ( !( uv >= -FLT_MAX && uv <= FLT_MAX ) ) {
+				return "The fitted face UV coordinates exceed the float32 range.";
+			}
+			if ( uv < lower ) {
+				lower = uv;
+			}
+		}
+		const double shift = -static_cast<double>( lower ) * dimensions[axis];
+		if ( !( shift >= -FLT_MAX && shift <= FLT_MAX ) ) {
+			return "The fitted UV shift exceeds the float32 range.";
+		}
+		fitted.shift[axis] = static_cast<float>( shift );
+	}
+
+	for ( int axis = 0; axis < 2; ++axis ) {
+		face->texdef.scale[axis] = fitted.scale[axis];
+		face->texdef.shift[axis] = fitted.shift[axis];
+	}
+	return NULL;
+}
+
 void Face_FitTexture( face_t * face, int nHeight, int nWidth ){
 	winding_t *w;
 	vec3_t mins,maxs;
@@ -3778,6 +3861,15 @@ void Face_FitTexture( face_t * face, int nHeight, int nWidth ){
 
 	w = face->face_winding;
 	if ( !w ) {
+		return;
+	}
+
+	if ( !g_qeglobals.m_bBrushPrimitMode && NodSurface_IsProfile( g_pGameDescription->mGameFile ) ) {
+		const char *error = Face_FitTexture_Nod( face, nHeight, nWidth );
+		if ( error ) {
+			Sys_FPrintf( SYS_WRN, "Surface UV fit: %s\n", error );
+			gtk_MessageBox( g_pParentWnd->m_pWidget, error, "Surface UV fit", MB_OK | MB_ICONWARNING );
+		}
 		return;
 	}
 
