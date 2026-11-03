@@ -8,7 +8,7 @@ StaRev - Starcraft Ghost reversed
 This file is part of the StaRev source code.
 
 File: nodexportdialog.h
-Version: 0.6.7
+Version: 0.6.8
 
 StaRev is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3
@@ -28,9 +28,17 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #define RADIANT_NODEXPORTDIALOG_H
 
 #include "nodcompile.h"
+#include <cerrno>
+#include <limits>
 
+/*
+ */
 struct NodExportColor {
+
 	GtkWidget *rgb[3], *button;
+	
+	/*
+	*/
 	static void ToButton( GtkSpinButton *, gpointer data ){
 		NodExportColor &field = *static_cast<NodExportColor *>( data );
 		GdkColor color;
@@ -41,6 +49,8 @@ struct NodExportColor {
 		gtk_color_button_set_color( GTK_COLOR_BUTTON( field.button ), &color );
 	}
 
+	/*
+	*/
 	static void FromButton( GtkColorButton *button, gpointer data ){
 		NodExportColor &field = *static_cast<NodExportColor *>( data );
 		GdkColor color;
@@ -52,13 +62,21 @@ struct NodExportColor {
 }
 };
 
+/*
+ */
 struct NodExportDialog {
+	
 	GtkWidget *mapName;
 	GtkWidget *panel, *geometry, *lighting, *objects, *pathing, *oversample, *shadows;
 	GtkWidget *spacingOverride, *spacing, *resolution, *phong, *sun, *ambient, *sunIntensity, *ambientIntensity;
 	GtkWidget *direction[3], *lightingBody, *sunBody, *ambientBody;
+	GtkWidget *physicsMarginOverride, *physicsMargin;
 	NodExportColor sunColor, ambientColor;
 	bool adjustingResolution = false;
+	bool sourceBacked = false;
+		
+	/*
+	*/
 	static void Resolution( GtkRange *range, gpointer data ){
 		NodExportDialog &ui = *static_cast<NodExportDialog *>( data );
 		if ( ui.adjustingResolution ) {
@@ -71,6 +89,8 @@ struct NodExportDialog {
 		ui.adjustingResolution = false;
 	}
 
+	/*
+	*/
 	static void Spacing( GtkSpinButton *spin, gpointer data ){
 		NodExportDialog &ui = *static_cast<NodExportDialog *>( data );
 		if ( ui.adjustingResolution ) {
@@ -82,6 +102,8 @@ struct NodExportDialog {
 		ui.adjustingResolution = false;
 	}
 
+	/*
+	*/
 	static GtkWidget *Box( GtkWidget *parent, const char *title ){
 		GtkWidget *frame = gtk_frame_new( title );
 		gtk_box_pack_start( GTK_BOX( parent ), frame, FALSE, FALSE, 0 );
@@ -91,12 +113,16 @@ struct NodExportDialog {
 		return box;
 	}
 
+	/*
+	*/
 	static GtkWidget *Check( GtkWidget *parent, const char *text ){
 		GtkWidget *check = gtk_check_button_new_with_label( text );
 		gtk_box_pack_start( GTK_BOX( parent ), check, FALSE, FALSE, 0 );
 		return check;
 	}
 
+	/*
+	*/
 	static GtkWidget *Row( GtkWidget *parent, const char *text ){
 		GtkWidget *row = gtk_hbox_new( FALSE, 6 );
 		gtk_box_pack_start( GTK_BOX( parent ), row, FALSE, FALSE, 0 );
@@ -107,6 +133,8 @@ struct NodExportDialog {
 		return row;
 	}
 
+	/*
+	*/
 	static GtkWidget *Spin( GtkWidget *row, double low, double high, double step, unsigned digits ){
 		GtkWidget *spin = gtk_spin_button_new_with_range( low, high, step );
 		gtk_spin_button_set_digits( GTK_SPIN_BUTTON( spin ), digits );
@@ -116,6 +144,8 @@ struct NodExportDialog {
 		return spin;
 	}
 
+	/*
+	*/
 	static void Color( GtkWidget *parent, NodExportColor &field ){
 		GtkWidget *row = Row( parent, _( "Color (RGB)" ) );
 		for ( int i = 0; i != 3; ++i ) {
@@ -131,12 +161,22 @@ struct NodExportDialog {
 		g_signal_connect( field.button, "color-set", G_CALLBACK( NodExportColor::FromButton ), &field );
 	}
 
+	/*
+	*/
 	static void Toggle( GtkToggleButton *, gpointer data ){
 		static_cast<NodExportDialog *>( data )->Sensitivity();
 	}
 
+	/*
+	*/
 	void Sensitivity(){
-		const bool enabled = gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( lighting ) ) != FALSE;
+		gtk_widget_set_sensitive( lighting, !sourceBacked );
+		const bool nil = gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( geometry ) ) ||
+			gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( lighting ) );
+		gtk_widget_set_sensitive( physicsMarginOverride, nil && !sourceBacked );
+		gtk_widget_set_sensitive( physicsMargin, nil && !sourceBacked &&
+			gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( physicsMarginOverride ) ) );
+		const bool enabled = !sourceBacked && gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( lighting ) ) != FALSE;
 		gtk_widget_set_sensitive( lightingBody, enabled );
 		gtk_widget_set_sensitive( spacing, gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( spacingOverride ) ) );
 		gtk_widget_set_sensitive( resolution, gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( spacingOverride ) ) );
@@ -144,6 +184,8 @@ struct NodExportDialog {
 		gtk_widget_set_sensitive( ambientBody, gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( ambient ) ) );
 	}
 
+	/*
+	*/
 	static void Preset( GtkButton *button, gpointer data ){
 		NodExportDialog &ui = *static_cast<NodExportDialog *>( data );
 		const int preset = GPOINTER_TO_INT( g_object_get_data( G_OBJECT( button ), "nod-preset" ) );
@@ -164,6 +206,8 @@ struct NodExportDialog {
 		ui.Load( options );
 	}
 
+	/*
+	*/
 	void Build( GtkWidget *parent, const NodCompileOptions &options ){
 		panel = gtk_vbox_new( FALSE, 8 );
 		GtkWidget *frame = gtk_frame_new( _( "Export Options" ) );
@@ -183,6 +227,11 @@ struct NodExportDialog {
 		GtkWidget *note = gtk_label_new( _( "Current native compiler: one sector, unified brush collision." ) );
 		gtk_misc_set_alignment( GTK_MISC( note ), 0, 0.5 );
 		gtk_box_pack_start( GTK_BOX( geo ), note, FALSE, FALSE, 0 );
+		physicsMarginOverride = Check( geo, _( "Override automatic physics margin" ) );
+		physicsMargin = gtk_entry_new();
+		gtk_entry_set_width_chars( GTK_ENTRY( physicsMargin ), 12 );
+		gtk_box_pack_start( GTK_BOX( Row( geo, _( "Physics margin" ) ) ), physicsMargin, FALSE, FALSE, 0 );
+		gtk_widget_set_tooltip_text( physicsMargin, _( "Positive padding on all six sides of automatic collision bounds, in MAP units. Default: 1. Requires updated MAPtoNIL. Does not fix embedded collision starts or player placement." ) );
 		pathing = Check( geo, _( "Pathing info (NPD)" ) );
 		GtkWidget *light = Box( left, _( "Lighting" ) );
 		lighting = Check( light, _( "Compute lighting (rebuilds NIL)" ) );
@@ -229,7 +278,7 @@ struct NodExportDialog {
 			g_signal_connect( button, "clicked", G_CALLBACK( Preset ), this );
 		}
 
-		GtkWidget *toggles[] = { lighting, spacingOverride, sun, ambient };
+		GtkWidget *toggles[] = { geometry, lighting, spacingOverride, sun, ambient, physicsMarginOverride };
 		for ( size_t i = 0; i != G_N_ELEMENTS( toggles ); ++i ) {
 			g_signal_connect( toggles[i], "toggled", G_CALLBACK( Toggle ), this );
 		}
@@ -237,10 +286,15 @@ struct NodExportDialog {
 		Load( options );
 	}
 
+	/*
+	*/
 	void Load( const NodCompileOptions &options ){
+		sourceBacked = options.sourceBacked;
 		gtk_entry_set_text( GTK_ENTRY( mapName ), options.mapName.c_str() );
+		gtk_toggle_button_set_active( GTK_TOGGLE_BUTTON( physicsMarginOverride ), !sourceBacked && options.physicsMarginOverride );
+		gtk_entry_set_text( GTK_ENTRY( physicsMargin ), NodCompile_Number( options.physicsMargin ).c_str() );
 		GtkWidget *checks[] = { geometry, objects, pathing, lighting, oversample, shadows, spacingOverride, sun, ambient };
-		const bool values[] = { options.geometry, options.objects, options.pathing, options.lighting, options.oversample,
+		const bool values[] = { options.geometry, options.objects, options.pathing, !sourceBacked && options.lighting, options.oversample,
 			options.shadows, options.spacingOverride, options.sun, options.ambient };
 		for ( size_t i = 0; i != G_N_ELEMENTS( checks ); ++i ) {
 			gtk_toggle_button_set_active( GTK_TOGGLE_BUTTON( checks[i] ), values[i] );
@@ -259,8 +313,19 @@ struct NodExportDialog {
 		Sensitivity();
 	}
 
+	/*
+	*/
 	void Read( NodCompileOptions &options ){
+		options.sourceBacked = sourceBacked;
 		options.mapName = gtk_entry_get_text( GTK_ENTRY( mapName ) );
+		options.physicsMarginOverride = gtk_toggle_button_get_active( GTK_TOGGLE_BUTTON( physicsMarginOverride ) ) != FALSE;
+		const char *margin = gtk_entry_get_text( GTK_ENTRY( physicsMargin ) );
+		char *end = NULL;
+		errno = 0;
+		options.physicsMargin = g_ascii_strtod( margin, &end );
+		if ( end == margin || *end || errno == ERANGE ) {
+			options.physicsMargin = std::numeric_limits<double>::quiet_NaN();
+		}
 		GtkWidget *checks[] = { geometry, objects, pathing, lighting, oversample, shadows, spacingOverride, sun, ambient };
 		bool *values[] = { &options.geometry, &options.objects, &options.pathing, &options.lighting, &options.oversample,
 			&options.shadows, &options.spacingOverride, &options.sun, &options.ambient };

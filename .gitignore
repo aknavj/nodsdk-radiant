@@ -4,9 +4,13 @@
 # Build outputs
 /apple/target/*
 /build
+/dist/
 /.scghost-build/
 /install
 /packs
+/win32/bin.msvc/
+/win32/int.msvc/
+/win32/config.msvc
 /tools/urt/tools/quake3/q3map2/Debug
 /tools/urt/tools/quake3/q3map2/Release
 /.sconsign.dblite

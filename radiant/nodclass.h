@@ -29,6 +29,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 
 #include "nodproperties.h"
 #include "nodpath.h"
+#include "nodscript.h"
 #include <glib.h>
 
 inline bool NodClass_Registered( const char *comments ){
@@ -37,7 +38,7 @@ inline bool NodClass_Registered( const char *comments ){
 
 inline bool NodClass_Browsable( const char *name, const char *comments ){
 	return strncmp( name, "nod_", 4 ) != 0 || NodClass_Registered( comments ) ||
-		NodPath_Class( name ) || strcmp( name, "nod_static_light" ) == 0;
+		NodPath_Class( name ) || NodScript_Class( name ) || strcmp( name, "nod_static_light" ) == 0;
 }
 
 inline std::string NodClass_Field( const char *comments, const std::string &field ){

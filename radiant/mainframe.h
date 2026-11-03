@@ -415,7 +415,8 @@ struct SKeyInfo
 #define ID_FILTER_ATMOSPHERIC           40234
 
 
-// those must have their own ID chunk ID_GRID_025 <= ID_GRID <= ID_GRID_256
+// those must have their own ID chunk ID_GRID_01 <= ID_GRID <= ID_GRID_256
+#define ID_GRID_01                      40299
 #define ID_GRID_025                     40300
 #define ID_GRID_05                      40301
 #define ID_GRID_1                       40302

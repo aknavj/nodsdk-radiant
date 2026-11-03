@@ -8,7 +8,7 @@ StaRev - Starcraft Ghost reversed
 This file is part of the StaRev source code.
 
 File: nodsurface.h
-Version: 0.6.7
+Version: 0.6.8
 
 StaRev is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3
@@ -28,6 +28,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #define RADIANT_NODSURFACE_H
 
 #include <float.h>
+#include <math.h>
 #include <string>
 #include <string.h>
 
@@ -60,6 +61,11 @@ struct NodSurfacePreset
  */
 inline bool NodSurface_IsProfile( const char *gameFile ){
 	return gameFile && strcmp( gameFile, "scghost.game" ) == 0;
+}
+
+inline int NodSurface_ShaderFlags( const char *gameFile, int editorFlags ){
+	// NOD preview flags belong to IShader, not the native MAP authoring fields.
+	return NodSurface_IsProfile( gameFile ) ? 0 : editorFlags;
 }
 
 /*
@@ -172,6 +178,66 @@ inline bool NodSurface_Equal( const Texdef &a, const Texdef &b ){
 	return strcmp( a.GetName(), b.GetName() ) == 0 && a.shift[0] == b.shift[0]
 		&& a.shift[1] == b.shift[1] && a.scale[0] == b.scale[0] && a.scale[1] == b.scale[1]
 		&& a.rotate == b.rotate && a.flags == b.flags && a.contents == b.contents && a.value == b.value;
+}
+
+template<typename Texdef>
+inline const char *NodSurface_TransformTexMat( const float original[2][3],
+	const Texdef &before, const Texdef &after, float result[2][3] ){
+	const float fields[] = { before.shift[0], before.shift[1], before.scale[0], before.scale[1], before.rotate,
+		after.shift[0], after.shift[1], after.scale[0], after.scale[1], after.rotate };
+	for ( size_t i = 0; i < sizeof( fields ) / sizeof( fields[0] ); ++i ) {
+		if ( !( fields[i] >= -FLT_MAX && fields[i] <= FLT_MAX ) ) {
+			return "UV values must be finite float32 numbers.";
+		}
+	}
+
+	for ( int row = 0; row < 2; ++row ) {
+		for ( int column = 0; column < 3; ++column ) {
+			if ( !( original[row][column] >= -FLT_MAX && original[row][column] <= FLT_MAX ) ) {
+				return "The original UV matrix contains nonfinite values.";
+			}
+		}
+	}
+
+	const double angle = ( static_cast<double>( after.rotate ) - before.rotate ) * 0.017453292519943295;
+	const double sine = sin( angle ), cosine = cos( angle );
+	float transformed[2][3];
+	for ( int column = 0; column < 2; ++column ) {
+		double values[2] = { original[0][column], original[1][column] };
+		if ( before.scale[column] != after.scale[column] ) {
+			if ( before.scale[column] != 0 ) {
+				const double ratio = static_cast<double>( after.scale[column] ) / before.scale[column];
+				values[0] *= ratio;
+				values[1] *= ratio;
+			} else {
+				// A zero-length axis has no direction; use the inspector's canonical basis.
+				const double direction = before.rotate * 0.017453292519943295;
+				values[0] = ( column == 0 ? cos( direction ) : -sin( direction ) ) * after.scale[column];
+				values[1] = ( column == 0 ? sin( direction ) : cos( direction ) ) * after.scale[column];
+			}
+		}
+
+		const double rotated[2] = { cosine * values[0] - sine * values[1],
+			sine * values[0] + cosine * values[1] };
+		for ( int row = 0; row < 2; ++row ) {
+			if ( !( rotated[row] >= -FLT_MAX && rotated[row] <= FLT_MAX ) ) {
+				return "The UV transform exceeds the float32 range.";
+			}
+			transformed[row][column] = static_cast<float>( rotated[row] );
+		}
+	}
+
+	for ( int row = 0; row < 2; ++row ) {
+		const double shift = static_cast<double>( after.shift[row] ) - before.shift[row];
+		const double value = original[row][2] + ( row == 0 ? -shift : shift );
+		if ( !( value >= -FLT_MAX && value <= FLT_MAX ) ) {
+			return "The UV shift exceeds the float32 range.";
+		}
+		transformed[row][2] = static_cast<float>( value );
+	}
+
+	memcpy( result, transformed, sizeof( transformed ) );
+	return NULL;
 }
 
 #endif

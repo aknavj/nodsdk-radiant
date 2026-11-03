@@ -105,7 +105,10 @@ class SCGhostPackTests(unittest.TestCase):
     def test_entity_and_placeholder_definitions(self):
         definitions = (SCRIPTS / "entities.def").read_text(encoding="ascii")
         self.assertEqual(
-            re.findall(r"/\*QUAKED (\w+)", definitions), ["worldspawn", "ghost", "misc_model"]
+            re.findall(r"/\*QUAKED (\w+)", definitions),
+            ["worldspawn", "ghost", "misc_model", "nod_template_instance", "nod_scene",
+             "nod_nil_sector", "nod_nsd_entity", "nod_static_light", "nod_npd_waypoint",
+             "nod_npd_link", "nod_console", "nod_sound_cue", "nod_enemy_spawn", "nod_trigger_relay", "func_group"]
         )
         self.assertEqual(
             (SCRIPTS / "shaderlist.txt").read_text(encoding="ascii").split(),

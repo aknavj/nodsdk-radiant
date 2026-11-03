@@ -52,6 +52,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "inodmodel.h"
 
 const _QERNodModelTable *NodModel_Resources();
+IModelCache *GetModelCache();
 
 // global interfaces we are using
 extern _QERShadersTable g_ShadersTable;

@@ -8,7 +8,7 @@ StaRev - Starcraft Ghost reversed
 This file is part of the StaRev source code.
 
 File: xywindow.cpp
-Version: 0.6.7
+Version: 0.6.8
 
 StaRev is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3
@@ -55,7 +55,9 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "nodlightplacement.h"
 #include "nodtemplateplacement.h"
 #include "nodpathplacement.h"
+#include "nodscriptplacement.h"
 #include "nodview.h"
+#include "nodsurface.h"
 #include "filters.h"
 #include <map>
 #include <gtk/gtk.h>
@@ -479,6 +481,21 @@ qboolean IsModelEntity( const char *name )
 void CreateEntityFromName( const char* name, const vec3_t origin ){
 	entity_t *e;
 	brush_t* b;
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME && NodScript_Class( name ) ) {
+		std::string error;
+		e = NodScript_Create( name, origin, error );
+		if ( !e ) {
+			Sys_FPrintf( SYS_WRN, "Native control: %s\n", error.c_str() );
+			gtk_MessageBox( g_pParentWnd->m_pWidget, error.c_str(), _( "Control not placed" ), MB_OK );
+		} else {
+			edit_entity = e;
+			Sys_MarkMapModified();
+			Sys_UpdateWindows( W_ALL );
+		}
+
+		return;
+	}
+
 	if ( g_pGameDescription->mGameFile == SCGHOST_GAME && strcmp( name, "nod_static_light" ) == 0 ) {
 		std::string error;
 		e = NodLight_Create( origin, error );
@@ -1951,7 +1968,7 @@ void XYWnd::NewBrushDrag( int x, int y ){
 		tex.SetName( shad->getName() );
 		tex.scale[0] = g_PrefsDlg.m_fDefTextureScale;
 		tex.scale[1] = g_PrefsDlg.m_fDefTextureScale;
-		tex.flags = shad->getFlags();
+		tex.flags = NodSurface_ShaderFlags( g_pGameDescription->mGameFile, shad->getFlags() );
 		
 		n = Brush_Create( mins, maxs, &tex );
 	} else {
@@ -2544,9 +2561,11 @@ void XYWnd::XY_DrawGrid(){
 		if ( COLORS_DIFFER( colour, COLOR_GRIDBACK ) ) {
 			qglColor3fv( g_qeglobals.d_savedinfo.colors[colour] );
 
+			const double gridSize = g_qeglobals.d_gridsize;
 			qglBegin( GL_LINES );
-			for ( x = xb ; x < xe ; x += g_qeglobals.d_gridsize )
+			for ( double index = ceil( xb / gridSize ); index * gridSize < xe ; ++index )
 			{
+				x = static_cast<float>( index * gridSize );
 				if ( !( (int)x & ( step - 1 ) ) && !( (int)x - x ) ) {
 					continue;
 				}
@@ -2555,8 +2574,9 @@ void XYWnd::XY_DrawGrid(){
 				qglVertex2f( x, ye );
 			}
 
-			for ( y = yb ; y < ye ; y += g_qeglobals.d_gridsize )
+			for ( double index = ceil( yb / gridSize ); index * gridSize < ye ; ++index )
 			{
+				y = static_cast<float>( index * gridSize );
 				if ( !( (int)y & ( step - 1 ) )  && !( (int)y - y ) ) {
 					continue;
 				}

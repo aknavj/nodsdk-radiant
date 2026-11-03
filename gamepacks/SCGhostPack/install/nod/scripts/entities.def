@@ -1,5 +1,22 @@
 /*QUAKED worldspawn (0.5 0.5 0.5) ?
-MAP brush container, not an NSD type. Native level export unsupported.
+MAP brush container; MAPtoNIL compiles brush geometry and collision.
+Scene environment is exported by MAPtoNSD; updated SDK required.
+Use Entities > Map resources and metadata > Scene environment to edit these keys.
+"nod_light_spacing" - Lighting sample spacing in MAP units; default 4.
+"nod_music" - Stored reference only; does not override native alarm/score cue selection.
+"nod_ambient_loop" - Cue in the loaded level sound bank; at most 31 ASCII bytes, no paths.
+"nod_sky_model" - Optional .nod filename; at most 31 ASCII bytes, no paths.
+"nod_sky_animation" - Optional .nad filename; independent of sky model.
+"nod_sky_unmasked" - 0/omitted: sky-surface stencil; 1: full-viewport sky for open rooms.
+"nod_fog_mode" - none or linear; omitted means none.
+"nod_fog_color" - Linear fog RGB in 0..255, not 0..1.
+"nod_fog_start" - Linear fog start distance in MAP units; nonnegative.
+"nod_fog_end" - Linear fog end; greater than start after float32 rounding.
+"nod_far_clip" - Nonnegative camera distance in MAP units; 0/omitted uses native default.
+"nod_reverb" - Native preset ID 0..25; canonical decimal, no named aliases.
+Linear fog requires color/start/end together; omit them for none.
+References do not deploy assets or guarantee playback/rendering.
+Unverified NSD volume/effects controls are not supported.
 */
 
 /*QUAKED ghost (0.2 0.8 1.0) (-16 -16 -24) (16 16 40)
@@ -72,14 +89,61 @@ Smaller spacing improves sampling; increase it if the 4096-triangle limit is rea
 MAP-only path authoring in world coordinates.
 Place manually on walkable ground. Edit origin and nod_waypoint_id; normal nod_flags is 0.
 Select two nodes source first, then Connect (Ctrl+K) for a directed edge.
-Copying nodes requires unique IDs. Imported nod_id records remain source-bound references.
+Imported waypoints can also be moved and connected; their IDs remain fixed.
+New nodes require unique IDs. Remove incident links when deleting nodes.
 */
 
 /*QUAKED nod_npd_link (0.4 0.7 0.4) (-0.125 -0.125 -0.125) (0.125 0.125 0.125)
 MAP-only path authoring: directed edge between waypoint IDs, not record indices.
 Create with two waypoints selected, source first (Ctrl+K). Reverse travel needs another edge.
 Edit nod_from and nod_to; normal nod_link_flags is 0. Lines and arrows follow the endpoints.
-Imported nod_id records remain source-bound references.
+Imported links use native waypoint indices; new links use waypoint IDs.
+*/
+
+/*QUAKED nod_console (0.9 0.7 0.2) (-0.125 -0.125 -0.125) (0.125 0.125 0.125)
+Native control authoring: compatibility console preset; prefer a NOT prop with a native handler.
+Select console first, sound cue/spawn control second, then Ctrl+K.
+"origin" - Wall-console position on the floor; vector3; editable local.
+"angles" - Editor pitch/yaw/roll; vector3; editable local.
+"targetname" - Optional unique control name; string32; editable local.
+"target" - Sound cue/spawn control name or imported nsd:OFFSET; string32; editable local.
+"nod_console_template" - Optional interactive prop from active NOT archives; default hackConsole_wall_activate; string32; editable local.
+Zero angles face +Y; yaw 180 faces -Y. Keep the interactive front clear.
+At least 0.5 seconds between spawn presses; repeated presses reuse the control.
+*/
+
+/*QUAKED nod_sound_cue (0.3 0.7 1) (-0.125 -0.125 -0.125) (0.125 0.125 0.125)
+Native control authoring: manually triggered cSoundStinger.
+"origin" - Positional sound emitter; vector3; editable local.
+"angles" - Editor orientation; vector3; editable local.
+"targetname" - Required unique receiver name; string32; editable local.
+"nod_cue" - Friendly cue in the deployed level sound bank; string32; editable local.
+No automatic startup playback or repeating timer. Separate cues may overlap.
+This does not force native alarm or score states. Deploy matching XSB and XWB.
+*/
+
+/*QUAKED nod_enemy_spawn (1 0.35 0.3) (-0.125 -0.125 -0.125) (0.125 0.125 0.125)
+Native control authoring: one enemy per console activation, managed start/stop pulse.
+"origin" - Spawn frame on clear floor; vector3; editable local.
+"angles" - Initial editor orientation; vector3; editable local.
+"targetname" - Required unique receiver name; string32; editable local.
+"nod_enemy" - Modeled AI actor from active NOT archives (exact spelling); string32; editable local.
+"nod_destination" - Second AI path frame in world coordinates; vector3; editable local.
+"nod_max_spawns" - Lifetime per-spawner limit 1..25, default 25; uint32 bits; editable local.
+Compiler emits existing cAIFightPath plus a hidden cTriggerRelay pulse helper.
+No automatic waves. Kills do not replenish the lifetime limit.
+Set the destination on clear ground and add NPD navigation for the combat area.
+*/
+
+/*QUAKED nod_trigger_relay (0.9 0.7 0.2) (-0.125 -0.125 -0.125) (0.125 0.125 0.125)
+Native control authoring: reusable timed sequence using cTriggerRelay.
+Generated by NODScript; console targets may reference its targetname.
+"targetname" - Unique symbolic target name.
+"nod_relay_count" - Number of actions, 1 through 12.
+"nod_relay_target_0" - First receiver: sound cue, spawn pulse or sequence.
+"nod_relay_delay_0" - First receiver delay in seconds, nonnegative.
+Additional actions use indices 1 through 11 with the same target/delay keys.
+Nested sequences support at most 12 transitive trigger actions and no cycles.
 */
 
 /*QUAKED func_group (0.6 0.7 0.8) ?

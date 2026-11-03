@@ -94,7 +94,7 @@ void ShowDlg();
 void HideDlg();
 void CancelDlg();
 void SetTexMods();
-void GetTexMods( bool b_SetUndoPoint = FALSE );
+void GetTexMods( bool b_SetUndoPoint = FALSE, bool bFitToScale = false );
 void BuildDialog();
 void FitAll();
 void InitDefaultIncrement( texdef_t * );
@@ -691,7 +691,7 @@ void SetTexMods(){
    Shows any changes to the main Radiant windows
    ===============
  */
-void GetTexMods( bool b_SetUndoPoint ) {
+void GetTexMods( bool b_SetUndoPoint, bool bFitToScale ) {
 
 #ifdef DBG_SI
 	Sys_Printf( "SurfaceDlg GetTexMods\n" );
@@ -699,7 +699,7 @@ void GetTexMods( bool b_SetUndoPoint ) {
 
 	if ( !texdef_face_list_empty() ) {
 		g_bListenUpdate = FALSE;
-		SetTexdef_FaceList( get_texdef_face_list(), b_SetUndoPoint, false );
+		SetTexdef_FaceList( get_texdef_face_list(), b_SetUndoPoint, bFitToScale );
 		g_bListenUpdate = TRUE;
 
 		if ( b_SetUndoPoint ) {
@@ -827,7 +827,8 @@ static void NodSurface_ApplyClicked( GtkButton *, gpointer ){
 		NodSurface_Apply( face->texdef, operation, captured );
 	}
 
-	GetTexMods( TRUE );
+	const bool replaceUV = operation != NOD_SURFACE_PLACEHOLDER && operation != NOD_SURFACE_CAPTURED_MATERIAL;
+	GetTexMods( TRUE, replaceUV && g_AppSurfaceTable.m_pfnIsBrushPrimitMode() );
 	GetTexdefInfo_from_Radiant();
 	SetTexMods();
 }
@@ -1790,7 +1791,16 @@ static void on_fit_height_spinbutton_value_changed( GtkSpinButton *spinbutton, g
 }
 
 static void on_fit_button_clicked( GtkButton *button, gpointer user_data ){
+	const bool nod = NodSurface_IsProfile( g_FuncTable.m_pfnGetGameFile() );
+	if ( nod ) {
+		GetTexMods( TRUE );
+	}
 	FaceList_FitTexture( get_texdef_face_list(), m_nHeight, m_nWidth );
+	if ( nod ) {
+		GetTexMods( TRUE );
+		GetTexdefInfo_from_Radiant();
+		SetTexMods();
+	}
 	Sys_UpdateWindows( W_ALL );
 }
 

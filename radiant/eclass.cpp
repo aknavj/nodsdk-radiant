@@ -65,6 +65,10 @@ unsigned NodClasses_Generation(){
 	return nodClassesGeneration; 
 }
 
+const NodTemplateCatalog &NodClasses_Catalog(){
+	return nodClasses;
+}
+
 /*
  */
 const char *NodClasses_Context(){
@@ -203,7 +207,8 @@ bool NodClasses_Load( const char *archives, std::string &error ){
 		const char *reserved[] = { 
 			"worldspawn", "func_group", "misc_model", "misc_gamemodel",
 			"model_static", "nod_scene", "nod_template_instance", "nod_nsd_entity",
-			"nod_nil_sector", "nod_npd_waypoint", "nod_npd_link", "nod_static_light"
+			"nod_nil_sector", "nod_npd_waypoint", "nod_npd_link", "nod_static_light",
+			"nod_console", "nod_sound_cue", "nod_enemy_spawn", "nod_trigger_relay"
 		};
 		
 		bool collision = false;

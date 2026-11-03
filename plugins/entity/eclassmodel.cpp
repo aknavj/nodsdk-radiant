@@ -54,6 +54,18 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "../../radiant/nodmodelreference.h"
 
 static bool NodModel_Value( entity_t *entity, const char *key, const char *storage, std::string &value ){
+	const char *preset = NodScript_ModelTemplate( entity->eclass->name, ValueForKey( entity, "nod_console_template" ) );
+	if ( *preset ) {
+		const eclass_t *type = Eclass_ForName( preset, false );
+		if ( !type || !NodClass_Registered( type->comments ) ) {
+			Sys_FPrintf( SYS_WRN, "NOT representation: console preview requires the live %s template; check SDK and asset paths.\n", preset );
+			return false;
+		}
+
+		value = NodClass_Default( type->comments, key );
+		return true;
+	}
+
 	for ( epair_t *pair = entity->epairs; pair; pair = pair->next ) {
 		if ( strcmp( pair->key, key ) == 0 ) { value = pair->value; return true; }
 	}
@@ -236,7 +248,8 @@ void CEntityEclassModel::OnKeyValueChanged( entity_t *e, const char *key, const 
 		UpdateCachedData();
 	}
 	else if ( m_template && ( strncmp( key, "nod_prop_", 9 ) == 0 || strncmp( key, "nod_modifier_", 13 ) == 0 ||
-		strcmp( key, "nod_model_bundle" ) == 0 ) ) {
+		strcmp( key, "nod_region_min" ) == 0 || strcmp( key, "nod_region_max" ) == 0 ||
+		strcmp( key, "nod_model_bundle" ) == 0 || strcmp( key, "nod_console_template" ) == 0 ) ) {
 		UpdateCachedData();
 	}
 	else if ( m_nativePoint && ( strcmp( key, "nod_bounds_min" ) == 0 ||
@@ -248,7 +261,8 @@ void CEntityEclassModel::OnKeyValueChanged( entity_t *e, const char *key, const 
 void CEntityEclassModel::SetEclass( const eclass_t* eclass ){
 	m_eclass = eclass;
 	m_nativePoint = m_entity && eclass && NodEntity_IsPoint( eclass->name );
-	m_template = m_entity && eclass && NodClass_Registered( eclass->comments );
+	m_template = m_entity && eclass &&
+		( NodClass_Registered( eclass->comments ) || *NodScript_ModelTemplate( eclass->name ) );
 	m_lightRadius = 0;
 	if ( m_nativePoint && strcmp( eclass->name, "nod_static_light" ) == 0 ) {
 		OnKeyValueChanged( m_entity, "radius", ValueForKey( m_entity, "radius" ) );
@@ -302,12 +316,24 @@ void CEntityEclassModel::UpdateCachedData(){
 	vec3_t editorMins, editorMaxs;
 	if ( m_template ) {
 		std::string model, minimum, maximum, scale, offset;
-		if ( !NodModel_Value( m_entity, "nod_prop_4", "string32", model ) ||
+		if ( *ValueForKey( m_entity, "nod_region_min" ) || *ValueForKey( m_entity, "nod_region_max" ) ) {
+			minimum = ValueForKey( m_entity, "nod_region_min" );
+			maximum = ValueForKey( m_entity, "nod_region_max" );
+		}
+		else if ( !NodModel_Value( m_entity, "nod_prop_4", "string32", model ) ||
 			!NodModel_Value( m_entity, "nod_prop_6", "vector3", minimum ) ||
 			!NodModel_Value( m_entity, "nod_prop_7", "vector3", maximum ) ||
 			!NodModel_Value( m_entity, "nod_prop_143", "float32", scale ) ||
 			!NodModel_Value( m_entity, "nod_prop_175", "vector3", offset ) ) {
-			return;
+			if ( !*NodScript_ModelTemplate( m_eclass->name ) ) {
+				return;
+			}
+
+			model.clear();
+			minimum.clear();
+			maximum.clear();
+			scale.clear();
+			offset.clear();
 		}
 
 		if ( !ModelTransform_Native( scale.c_str(), offset.c_str(), m_translate, m_scale, translated, scaled ) ) {

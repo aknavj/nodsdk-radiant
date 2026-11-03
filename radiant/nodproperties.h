@@ -8,7 +8,7 @@ StaRev - Starcraft Ghost reversed
 This file is part of the StaRev source code.
 
 File: nodproperties.h
-Version: 0.6.7
+Version: 0.6.8
 
 StaRev is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3
@@ -29,6 +29,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 
 #include <string>
 #include "modeltransform.h"
+#include "nodenvironment.h"
 
 struct NodPropertyInfo
 {
@@ -56,6 +57,12 @@ inline std::string NodProperty_DisplayName( const std::string &key, const std::s
 
 	if ( key == "nod_light_spacing" ) {
 		return "Lighting Sample Spacing";
+	}
+
+	for ( const auto &field : NodEnvironment_Fields() ) {
+		if ( key == field.key ) {
+			return field.name;
+		}
 	}
 
 	if ( key == "nod_waypoint_id" ) {
@@ -116,7 +123,7 @@ inline bool NodProperty_Visible( const std::string &key, const std::string &stor
 		return true;
 	}
 
-	if ( key == "nod_light_spacing" || key == "nod_waypoint_id" || key == "nod_from" || key == "nod_to" ||
+	if ( NodEnvironment_IsKey( key ) || key == "nod_light_spacing" || key == "nod_waypoint_id" || key == "nod_from" || key == "nod_to" ||
 		key == "nod_link_flags" || key == "nod_flags" ) {
 		return true;
 	}

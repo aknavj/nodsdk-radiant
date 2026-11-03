@@ -449,7 +449,7 @@ gint HandleCommand( GtkWidget *widget, gpointer data ){
 			g_pParentWnd->OnViewNearest( id );
 		}
 	}
-	else if ( id >= ID_GRID_025 && id <= ID_GRID_256 ) {
+	else if ( id >= ID_GRID_01 && id <= ID_GRID_256 ) {
 		g_pParentWnd->OnGrid( id );
 	}
 	else if ( id >= ID_PLUGIN_START && id <= ID_PLUGIN_END ) {
@@ -1354,7 +1354,10 @@ void MainFrame::create_main_menu( GtkWidget *window, GtkWidget *vbox ){
 		menu_tearoff( menu );
 	}
 
-	item = create_radio_menu_item_with_mnemonic( menu, NULL, _( "Grid0.25" ),
+	item = create_radio_menu_item_with_mnemonic( menu, NULL, _( "Grid0.1" ),
+												 G_CALLBACK( HandleCommand ), ID_GRID_01, FALSE );
+	g_object_set_data( G_OBJECT( window ), "menu_grid_01", item );
+	item = create_radio_menu_item_with_mnemonic( menu, item, _( "Grid0.25" ),
 												 G_CALLBACK( HandleCommand ), ID_GRID_025, FALSE );
 	g_object_set_data( G_OBJECT( window ), "menu_grid_025", item );
 	item = create_radio_menu_item_with_mnemonic( menu, item, _( "Grid0.5" ),
@@ -5278,22 +5281,22 @@ void MainFrame::OnView100(){
 void MainFrame::OnViewZoomin(){
 	if ( m_pXYWnd && m_pXYWnd->Active() ) {
 		m_pXYWnd->SetScale( m_pXYWnd->Scale() * 5.0 / 4 );
-		if ( m_pXYWnd->Scale() > 30 ) {
-			m_pXYWnd->SetScale( 30 );
+		if ( m_pXYWnd->Scale() > 64 ) {
+			m_pXYWnd->SetScale( 64 );
 		}
 	}
 
 	if ( m_pXZWnd && m_pXZWnd->Active() ) {
 		m_pXZWnd->SetScale( m_pXZWnd->Scale() * 5.0 / 4 );
-		if ( m_pXZWnd->Scale() > 30 ) {
-			m_pXZWnd->SetScale( 30 );
+		if ( m_pXZWnd->Scale() > 64 ) {
+			m_pXZWnd->SetScale( 64 );
 		}
 	}
 
 	if ( m_pYZWnd && m_pYZWnd->Active() ) {
 		m_pYZWnd->SetScale( m_pYZWnd->Scale() * 5.0 / 4 );
-		if ( m_pYZWnd->Scale() > 30 ) {
-			m_pYZWnd->SetScale( 30 );
+		if ( m_pYZWnd->Scale() > 64 ) {
+			m_pYZWnd->SetScale( 64 );
 		}
 	}
 
@@ -6003,7 +6006,11 @@ void MainFrame::OnBspCommand( unsigned int nID ){
 }
 
 void MainFrame::OnGrid( unsigned int nID ){
-	if ( nID == ID_GRID_025 ) {
+	if ( nID == ID_GRID_01 ) {
+		g_qeglobals.d_gridsize = 0.1f;
+		g_qeglobals.d_bSmallGrid = true;
+	}
+	else if ( nID == ID_GRID_025 ) {
 		g_qeglobals.d_gridsize = 0.25f;
 		g_qeglobals.d_bSmallGrid = true;
 	}
@@ -7627,6 +7634,11 @@ void MainFrame::OnGridPrev(){
 		g_qeglobals.d_bSmallGrid = true;
 		item = GTK_WIDGET( g_object_get_data( G_OBJECT( m_pWidget ), "menu_grid_025" ) );
 	}
+	else if ( g_qeglobals.d_gridsize == 0.25 ) {
+		g_qeglobals.d_gridsize = 0.1f;
+		g_qeglobals.d_bSmallGrid = true;
+		item = GTK_WIDGET( g_object_get_data( G_OBJECT( m_pWidget ), "menu_grid_01" ) );
+	}
 	else if ( g_qeglobals.d_gridsize > 1 ) {
 		g_qeglobals.d_gridsize = (int)g_qeglobals.d_gridsize >> 1;
 		g_qeglobals.d_bSmallGrid = false;
@@ -7666,7 +7678,12 @@ void MainFrame::OnGridPrev(){
 
 void MainFrame::OnGridNext(){
 	GtkWidget *item;
-	if ( g_qeglobals.d_gridsize == 0.25 ) {
+	if ( g_qeglobals.d_gridsize == 0.1f ) {
+		g_qeglobals.d_gridsize = 0.25;
+		g_qeglobals.d_bSmallGrid = true;
+		item = GTK_WIDGET( g_object_get_data( G_OBJECT( m_pWidget ), "menu_grid_025" ) );
+	}
+	else if ( g_qeglobals.d_gridsize == 0.25 ) {
 		g_qeglobals.d_gridsize = 0.5;
 		g_qeglobals.d_bSmallGrid = true;
 		item = GTK_WIDGET( g_object_get_data( G_OBJECT( m_pWidget ), "menu_grid_05" ) );

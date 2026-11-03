@@ -53,6 +53,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 
 #include "stdafx.h"
 #include "nodpathplacement.h"
+#include "nodscriptplacement.h"
 #include <gtk/gtk.h>
 #include <sys/stat.h>
 #include "gtkmisc.h"
@@ -819,6 +820,23 @@ void ConnectEntities( void ){
 
 	e1 = g_qeglobals.d_select_order[0]->owner;
 	e2 = g_qeglobals.d_select_order[1]->owner;
+	if ( g_pGameDescription->mGameFile == SCGHOST_GAME &&
+		( NodScript_Class( ValueForKey( e1, "classname" ) ) ||
+			NodScript_Class( ValueForKey( e2, "classname" ) ) ||
+			NodScript_Behavior( ValueForKey( e1, "nod_prop_15" ) ) ||
+			NodScript_Behavior( ValueForKey( e2, "nod_prop_15" ) ) ) ) {
+		std::string error;
+		if ( !NodScript_Connect( e1, e2, error ) ) {
+			Sys_FPrintf( SYS_WRN, "Native control: %s\n", error.c_str() );
+			gtk_MessageBox( g_pParentWnd->m_pWidget, error.c_str(), _( "Control not connected" ), MB_OK );
+		} else {
+			Sys_MarkMapModified();
+			Sys_UpdateWindows( W_ALL );
+		}
+
+		return;
+	}
+
 	if ( g_pGameDescription->mGameFile == SCGHOST_GAME &&
 		( NodPath_Class( ValueForKey( e1, "classname" ) ) || NodPath_Class( ValueForKey( e2, "classname" ) ) ) ) {
 		std::string error;

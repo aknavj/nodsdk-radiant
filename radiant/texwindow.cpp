@@ -1,4 +1,30 @@
 /*
+===========================================================================
+Copyright (C) 2002 - 2005, Nihilistic Software, Inc.
+Copyright (C) 2002 - 2014, Blizzard Entertainment, Inc.
+Copyright (C) 2024 - 2026, OpenNod SDK & StaRev contributors
+
+StaRev - Starcraft Ghost reversed
+This file is part of the StaRev source code.
+
+File: texwindow.cpp
+Version: 0.6.8
+
+StaRev is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 3
+as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <http://www.gnu.org/licenses/>.
+===========================================================================
+*/
+
+/*
    Copyright (C) 1999-2007 id Software, Inc. and contributors.
    For a list of contributors, see the accompanying CONTRIBUTORS file.
 
@@ -43,6 +69,7 @@
 #include "str.h"
 #include "missing.h"
 #include "texmanip.h"
+#include "nodsurface.h"
 
 #define TYP_MIPTEX  68
 
@@ -1565,7 +1592,7 @@ void SelectTexture( int mx, int my, bool bShift, bool bFitScale ){
 				if ( g_pGameDescription->idTech2 ) {
 					tex.flags = 0;
 				} else {
-					tex.flags = pCurrentShader->getFlags();
+					tex.flags = NodSurface_ShaderFlags( g_pGameDescription->mGameFile, pCurrentShader->getFlags() );
 				}
 				// TTimo - shader code cleanup
 				// texdef.name is the name of the shader, not the name of the actual texture file

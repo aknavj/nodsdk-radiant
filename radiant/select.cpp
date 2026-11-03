@@ -52,6 +52,8 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "filters.h"
 #include "groupdialog.h"
 #include "modeltransform.h"
+#include "nodtemplates.h"
+#include "nodsurface.h"
 
 // externs
 CPtrArray g_SelectedFaces;
@@ -782,10 +784,7 @@ void Select_ApplyMatrix( bool bSnap, bool bRotation, int nAxis, float fDeg ){ //
 			}
 
 			// update the origin key
-			char text[64];
-			sprintf( text, "%i %i %i",
-					 (int)b->owner->origin[0], (int)b->owner->origin[1], (int)b->owner->origin[2] );
-			SetKeyValue( b->owner, "origin", text );
+			SetKeyValue( b->owner, "origin", NodTemplate_FormatPosition( b->owner->origin ).c_str() );
 
 			/*\todo remove brush-based bounding box for fixedsize entities */
 			VectorSubtract( b->owner->origin, tmporigin, temp );
@@ -1789,6 +1788,27 @@ void Select_ScaleTexture( float x, float y ){
 	Sys_UpdateWindows( W_CAMERA );
 }
 
+static bool RotateBrushPrimitTexture( face_t *face, int amount ){
+	brushprimit_texdef_t matrix;
+	ConvertTexMatWithQTexture( &face->brushprimit_texdef, face->d_texture, &matrix, NULL );
+	texdef_t before = face->texdef;
+	TexMatToFakeTexCoords( matrix.coords, before.shift, &before.rotate, before.scale );
+	texdef_t after = before;
+	after.rotate += amount;
+	if ( NodSurface_IsProfile( g_pGameDescription->mGameFile ) ) {
+		const char *error = NodSurface_TransformTexMat( matrix.coords, before, after, matrix.coords );
+		if ( error ) {
+			Sys_FPrintf( SYS_WRN, "Texture rotation: %s\n", error );
+			gtk_MessageBox( g_pParentWnd->m_pWidget, error, "Texture rotation", MB_OK | MB_ICONWARNING );
+			return false;
+		}
+	} else {
+		FakeTexCoordsToTexMat( after.shift, after.rotate, after.scale, matrix.coords );
+	}
+	ConvertTexMatWithQTexture( &matrix, NULL, &face->brushprimit_texdef, face->d_texture );
+	return true;
+}
+
 void Select_RotateTexture( int amt ){
 	brush_t     *b;
 	face_t      *f;
@@ -1804,21 +1824,9 @@ void Select_RotateTexture( int amt ){
 		for ( f = b->brush_faces ; f ; f = f->next )
 		{
 			if ( g_qeglobals.m_bBrushPrimitMode ) {
-				// apply same scale as the spinner button of the surface inspector
-				float shift[2];
-				float rotate;
-				float scale[2];
-				brushprimit_texdef_t bp;
-				// compute normalized texture matrix
-				ConvertTexMatWithQTexture( &f->brushprimit_texdef, f->d_texture, &bp, NULL );
-				// compute fake shift scale rot
-				TexMatToFakeTexCoords( bp.coords, shift, &rotate, scale );
-				// update
-				rotate += amt;
-				// compute new normalized texture matrix
-				FakeTexCoordsToTexMat( shift, rotate, scale, bp.coords );
-				// apply to face texture matrix
-				ConvertTexMatWithQTexture( &bp, NULL, &f->brushprimit_texdef, f->d_texture );
+				if ( !RotateBrushPrimitTexture( f, amt ) ) {
+					return;
+				}
 			}
 			else
 			{
@@ -1840,15 +1848,9 @@ void Select_RotateTexture( int amt ){
 			face_t *selFace = reinterpret_cast<face_t*>( g_ptrSelectedFaces.GetAt( i ) );
 			brush_t *selBrush = reinterpret_cast<brush_t*>( g_ptrSelectedFaceBrushes.GetAt( i ) );
 			if ( g_qeglobals.m_bBrushPrimitMode ) {
-				float shift[2];
-				float rotate;
-				float scale[2];
-				brushprimit_texdef_t bp;
-				ConvertTexMatWithQTexture( &selFace->brushprimit_texdef, selFace->d_texture, &bp, NULL );
-				TexMatToFakeTexCoords( bp.coords, shift, &rotate, scale );
-				rotate += amt;
-				FakeTexCoordsToTexMat( shift, rotate, scale, bp.coords );
-				ConvertTexMatWithQTexture( &bp, NULL, &selFace->brushprimit_texdef, selFace->d_texture );
+				if ( !RotateBrushPrimitTexture( selFace, amt ) ) {
+					return;
+				}
 			}
 			else
 			{

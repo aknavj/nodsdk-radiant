@@ -52,6 +52,9 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 //
 
 #include "stdafx.h"
+#include "nodenvironment.h"
+#include "nodmodelreference.h"
+#include "nodsurface.h"
 #include <gtk/gtk.h>
 #include <GL/gl.h>
 
@@ -73,10 +76,13 @@ CamWnd::CamWnd ()
 	m_pSide_select = NULL;
 	m_bClipMode = false;
 	m_bFreeMove = false;
+	m_nodSkyModel = NULL;
+	m_nodSkyWarned = false;
 	Cam_Init();
 }
 
 CamWnd::~CamWnd (){
+	ClearNodSky();
 }
 
 void CamWnd::OnCreate(){
@@ -1166,6 +1172,106 @@ void CamWnd::Cam_DrawBrushes( int mode ){
 }
 }
 
+void CamWnd::ClearNodSky(){
+	if ( m_nodSkyModel ) {
+		GetModelCache()->DeleteByID( m_nodSkyRequest.c_str(), "nod" );
+	}
+	m_nodSkyModel = NULL;
+	m_nodSkyRequest.clear();
+	m_nodSkyWarned = false;
+}
+
+void CamWnd::DrawNodSky(){
+	if ( !NodSurface_IsProfile( g_pGameDescription->mGameFile ) || !world_entity ||
+		!*ValueForKey( world_entity, "nod_sky_model" ) ) {
+		ClearNodSky();
+		return;
+	}
+	if ( m_Camera.draw_mode != cd_texture ) {
+		return;
+	}
+
+	const std::string sky = ValueForKey( world_entity, "nod_sky_model" );
+	const std::string bundle = ValueForKey( world_entity, "nod_model_bundle" );
+	const std::string request = NodModelReference_Request( sky, bundle );
+	if ( request != m_nodSkyRequest ) {
+		ClearNodSky();
+		m_nodSkyRequest = request;
+		NodEnvironmentValues values;
+		values["nod_sky_model"] = sky;
+		const std::string error = NodEnvironment_Validate( values );
+		if ( !error.empty() || !NodModelReference_Bundle( bundle ) ) {
+			Sys_FPrintf( SYS_WRN, "NOD sky preview: %s\n",
+				error.empty() ? "Invalid per-map model bundle." : error.c_str() );
+			return;
+		}
+		m_nodSkyModel = GetModelCache()->GetByID( request.c_str(), "nod" );
+	}
+	if ( !m_nodSkyModel ) {
+		return;
+	}
+
+	IRender *render = m_nodSkyModel->pRender;
+	const aabb_t *bounds = render && render->IsModelNotNull() ? render->GetAABB() : NULL;
+	double radius = 0;
+	if ( bounds ) {
+		for ( int axis = 0; axis < 3; ++axis ) {
+			if ( !( bounds->origin[axis] >= -FLT_MAX && bounds->origin[axis] <= FLT_MAX &&
+				bounds->extents[axis] >= 0 && bounds->extents[axis] <= FLT_MAX ) ) {
+				radius = 0;
+				break;
+			}
+			const double edge = fabs( static_cast<double>( bounds->origin[axis] ) ) + bounds->extents[axis];
+			if ( edge > radius ) {
+				radius = edge;
+			}
+		}
+	}
+	if ( radius <= 0 ) {
+		if ( !m_nodSkyWarned ) {
+			Sys_FPrintf( SYS_WRN, "NOD sky preview unavailable for '%s': missing model or invalid bounds. Check the asset roots and nod_model_bundle.\n",
+				sky.c_str() );
+			m_nodSkyWarned = true;
+		}
+		return;
+	}
+	m_nodSkyWarned = false;
+
+	qglPushAttrib( GL_ALL_ATTRIB_BITS );
+	qglPushClientAttrib( GL_CLIENT_VERTEX_ARRAY_BIT );
+	qglMatrixMode( GL_MODELVIEW );
+	qglPushMatrix();
+	// Remove camera translation; uniform scaling only keeps the sky inside the editor's clip range.
+	qglTranslatef( m_Camera.origin[0], m_Camera.origin[1], m_Camera.origin[2] );
+	const float scale = static_cast<float>( 256 / radius );
+	qglScalef( scale, scale, scale );
+	qglPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+	qglDisable( GL_CULL_FACE );
+	qglDisable( GL_LIGHTING );
+	qglDisable( GL_FOG );
+	qglDisable( GL_ALPHA_TEST );
+	qglDisable( GL_BLEND );
+	qglEnable( GL_TEXTURE_2D );
+	qglTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
+	qglColor4f( 1, 1, 1, 1 );
+	qglEnable( GL_DEPTH_TEST );
+	qglDepthFunc( GL_LEQUAL );
+	qglDepthMask( GL_TRUE );
+	render->Draw( DRAW_GL_FILL | DRAW_GL_TEXTURE_2D, DRAW_RF_CAM );
+	qglEnable( GL_BLEND );
+	qglBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+	qglDepthMask( GL_FALSE );
+	qglColor4f( 1, 1, 1, 1 );
+	render->Draw( DRAW_GL_FILL | DRAW_GL_TEXTURE_2D | DRAW_GL_BLEND, DRAW_RF_CAM );
+	qglDepthMask( GL_TRUE );
+	qglClearDepth( 1 );
+	qglClear( GL_DEPTH_BUFFER_BIT );
+	qglMatrixMode( GL_MODELVIEW );
+	qglPopMatrix();
+	qglPopClientAttrib();
+	qglPopAttrib();
+}
+
 void CamWnd::Cam_DrawStuff(){
 	GLfloat identity[4];
 	VectorSet( identity, 0.8f, 0.8f, 0.8f );
@@ -1505,6 +1611,7 @@ void CamWnd::Cam_Draw(){
 	// draw stuff
 	//
 
+	DrawNodSky();
 	Cam_DrawStuff();
 
 	qglEnableClientState( GL_VERTEX_ARRAY );

@@ -25,6 +25,7 @@
 class XYWnd;
 
 #include "glwindow.h"
+#include <string>
 
 class rectangle_t
 {
@@ -157,6 +158,11 @@ void OriginalMouseUp( guint32 nFlags, int pointX, int pointY );
 
 private:
 XORRectangle m_XORRectangle;
+std::string m_nodSkyRequest;
+entity_interfaces_t *m_nodSkyModel;
+bool m_nodSkyWarned;
+void ClearNodSky();
+void DrawNodSky();
 
 // project a point in geometric space into camera space
 void ProjectCamera( const vec3_t A, vec_t B[2] );
